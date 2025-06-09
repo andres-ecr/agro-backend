@@ -1,0 +1,26 @@
+# Bytecode files
+**/__pycache__/*
+*.pyc
+
+# Virtual environment
+venv/
+.venv/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Database file
+db.sqlite3
+
+# Zip files
+*.zip
+
+# Env files
+.env
+
+# Python distribution files
+dist/
+build/
+*.egg-info/
+*.egg

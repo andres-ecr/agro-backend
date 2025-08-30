@@ -7,4 +7,5 @@ router.register('', ReportViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('summary/', ReportViewSet.as_view({'get': 'summary'}), name='report-summary'),
 ]

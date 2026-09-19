@@ -27,29 +27,33 @@ class UserViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return User.objects.none()
             
-        if user.role == 'superadmin' or user.is_superuser:
+        if getattr(user, 'role', None) == 'superadmin' or user.is_superuser:
             queryset = User.objects.all().order_by('-date_joined')
-            tenant_id = self.request.query_params.get('tenant')
-            if tenant_id:
-                queryset = queryset.filter(tenant_id=tenant_id)
+            tenant_id = self.request.headers.get('X-Tenant-ID') or self.request.query_params.get('tenant')
+            if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                try:
+                    queryset = queryset.filter(tenant_id=int(tenant_id))
+                except (ValueError, TypeError):
+                    queryset = queryset.filter(tenant_id=tenant_id)
             return queryset
-        elif user.role == 'admin':
-            if not user.tenant:
+        elif getattr(user, 'role', None) == 'admin':
+            tenant = getattr(user, 'tenant', None)
+            if not tenant:
                 return User.objects.none()
-            return User.objects.filter(tenant=user.tenant).exclude(role='superadmin').order_by('-date_joined')
+            return User.objects.filter(tenant=tenant).exclude(role='superadmin').order_by('-date_joined')
         else:
             return User.objects.filter(id=user.id)
     
     def perform_create(self, serializer):
         user = self.request.user
-        if user.role != 'superadmin' and not user.is_superuser:
+        if getattr(user, 'role', None) != 'superadmin' and not user.is_superuser:
             role = serializer.validated_data.get('role', 'operator')
             if role == 'superadmin':
                 raise ValidationError({'role': 'No tiene permisos para crear usuarios superadmin.'})
-            tenant = user.tenant
+            tenant = getattr(user, 'tenant', None)
             if not tenant:
                 raise ValidationError({'tenant': 'El usuario administrador no tiene una sede asignada.'})
-            allowed_roles = tenant.allowed_roles if tenant.allowed_roles else ['admin', 'operator']
+            allowed_roles = tenant.allowed_roles if getattr(tenant, 'allowed_roles', None) else ['admin', 'operator']
             if role not in allowed_roles:
                 raise ValidationError({'role': f"El rol '{role}' no está permitido para esta sede. Roles permitidos: {', '.join(allowed_roles)}"})
             serializer.save(tenant=tenant, role=role)
@@ -58,18 +62,18 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         user = self.request.user
-        if user.role != 'superadmin' and not user.is_superuser:
+        if getattr(user, 'role', None) != 'superadmin' and not user.is_superuser:
             role = serializer.validated_data.get('role')
             if role:
                 if role == 'superadmin':
                     raise ValidationError({'role': 'No tiene permisos para asignar el rol superadmin.'})
-                tenant = user.tenant
+                tenant = getattr(user, 'tenant', None)
                 if not tenant:
                     raise ValidationError({'tenant': 'El usuario administrador no tiene una sede asignada.'})
-                allowed_roles = tenant.allowed_roles if tenant.allowed_roles else ['admin', 'operator']
+                allowed_roles = tenant.allowed_roles if getattr(tenant, 'allowed_roles', None) else ['admin', 'operator']
                 if role not in allowed_roles:
                     raise ValidationError({'role': f"El rol '{role}' no está permitido para esta sede. Roles permitidos: {', '.join(allowed_roles)}"})
-            serializer.save(tenant=user.tenant)
+            serializer.save(tenant=getattr(user, 'tenant', None))
         else:
             serializer.save()
     

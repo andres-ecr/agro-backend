@@ -25,6 +25,7 @@ class ReportFilter(django_filters.FilterSet):
     licencia = django_filters.CharFilter(method='filter_licencia')
     carga = django_filters.CharFilter(method='filter_carga')
     clp = django_filters.CharFilter(method='filter_clp')
+    tenant = django_filters.CharFilter(method='filter_tenant')
     
     def filter_productor(self, queryset, name, value):
         """Filtrar por productor (búsqueda parcial en datosGenerales_json)"""
@@ -49,10 +50,16 @@ class ReportFilter(django_filters.FilterSet):
     def filter_clp(self, queryset, name, value):
         """Filtrar por clp (búsqueda parcial en datosGenerales_json)"""
         return queryset.filter(datosGenerales_json__icontains=value)
+
+    def filter_tenant(self, queryset, name, value):
+        """Filtrar por tenant (ID numérico o ignorar si es 'all')"""
+        if not value or str(value).lower() in ('all', 'undefined', 'null'):
+            return queryset
+        return queryset.filter(tenant_id=value)
     
     class Meta:
         model = Report
-        fields = ['fecha_desde', 'fecha_hasta', 'lote', 'producto', 'productor', 'placa', 'licencia', 'carga', 'clp']
+        fields = ['fecha_desde', 'fecha_hasta', 'lote', 'producto', 'productor', 'placa', 'licencia', 'carga', 'clp', 'tenant']
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 10
@@ -73,10 +80,21 @@ class ReportViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Report.objects.all()
         user = self.request.user
-        if user.is_authenticated and not user.is_superuser:
-            if getattr(user, 'tenant', None):
-                queryset = queryset.filter(tenant=user.tenant)
-        return queryset
+        if not user or not user.is_authenticated:
+            return queryset.none()
+
+        # Platform superadmin / is_superuser
+        if getattr(user, 'role', None) == 'superadmin' or user.is_superuser:
+            tenant_id = self.request.headers.get('X-Tenant-ID') or self.request.query_params.get('tenant')
+            if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                try:
+                    queryset = queryset.filter(tenant_id=int(tenant_id))
+                except (ValueError, TypeError):
+                    queryset = queryset.filter(tenant_id=tenant_id)
+            return queryset
+
+        # Plant admin or operator: strictly filter by user.tenant (cannot be overridden by header)
+        return queryset.filter(tenant=user.tenant)
     
     def get_serializer_class(self):
         if self.action == 'list':
@@ -96,9 +114,17 @@ class ReportViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
     def perform_create(self, serializer):
+        user = self.request.user
+        tenant = getattr(user, 'tenant', None)
+        if (getattr(user, 'role', None) == 'superadmin' or user.is_superuser) and not tenant:
+            tenant_id = self.request.headers.get('X-Tenant-ID') or self.request.query_params.get('tenant')
+            if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                from tenants.models import Tenant
+                tenant = Tenant.objects.filter(id=tenant_id).first()
+
         serializer.save(
-            created_by=self.request.user,
-            tenant=getattr(self.request.user, 'tenant', None)
+            created_by=user,
+            tenant=tenant
         )
     
     @action(detail=False, methods=['get'])

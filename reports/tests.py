@@ -218,3 +218,71 @@ class ReportTenantAndFilterTests(TestCase):
         self.assertEqual(recent[0]['productor'], 'Carlos Ruiz')
         self.assertEqual(recent[0]['placa'], 'DEF-456')
         self.assertEqual(recent[0]['carga'], 'CARGA-03')
+
+    def test_superadmin_header_and_query_tenant_filtering(self):
+        Report.objects.create(id='REP-SUPER-ICA', producto='Uva', lote='L-I', tenant=self.tenant1)
+        Report.objects.create(id='REP-SUPER-CAS', producto='Palta', lote='L-C', tenant=self.tenant2)
+
+        self.client.force_authenticate(user=self.superuser)
+
+        # 1. Without header or param: Global view (both returned)
+        res_global = self.client.get('/reports/')
+        self.assertEqual(res_global.status_code, status.HTTP_200_OK)
+        ids = [r['id'] for r in res_global.data.get('results', res_global.data)]
+        self.assertIn('REP-SUPER-ICA', ids)
+        self.assertIn('REP-SUPER-CAS', ids)
+
+        # 2. With X-Tenant-ID header for Casma
+        res_casma_hdr = self.client.get('/reports/', HTTP_X_TENANT_ID=str(self.tenant2.id))
+        self.assertEqual(res_casma_hdr.status_code, status.HTTP_200_OK)
+        casma_ids = [r['id'] for r in res_casma_hdr.data.get('results', res_casma_hdr.data)]
+        self.assertIn('REP-SUPER-CAS', casma_ids)
+        self.assertNotIn('REP-SUPER-ICA', casma_ids)
+
+        # 3. With ?tenant= query param for Ica
+        res_ica_param = self.client.get(f'/reports/?tenant={self.tenant1.id}')
+        self.assertEqual(res_ica_param.status_code, status.HTTP_200_OK)
+        ica_ids = [r['id'] for r in res_ica_param.data.get('results', res_ica_param.data)]
+        self.assertIn('REP-SUPER-ICA', ica_ids)
+        self.assertNotIn('REP-SUPER-CAS', ica_ids)
+
+    def test_operator_cannot_override_tenant_via_header(self):
+        Report.objects.create(id='REP-SEC-ICA', producto='Uva', lote='L-1', tenant=self.tenant1)
+        Report.objects.create(id='REP-SEC-CAS', producto='Palta', lote='L-2', tenant=self.tenant2)
+
+        # Operator of Ica tries to spoof header to Sede Casma
+        self.client.force_authenticate(user=self.user_ica)
+        res = self.client.get('/reports/', HTTP_X_TENANT_ID=str(self.tenant2.id))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ids = [r['id'] for r in res.data.get('results', res.data)]
+        self.assertIn('REP-SEC-ICA', ids)
+        self.assertNotIn('REP-SEC-CAS', ids)
+
+    def test_dashboard_metrics_with_tenant_header_for_superadmin(self):
+        Report.objects.create(
+            id='REP-MET-ICA',
+            producto='Uva',
+            lote='L-M1',
+            totalPesoNeto=Decimal('100.0'),
+            totalJabas=10,
+            tenant=self.tenant1
+        )
+        Report.objects.create(
+            id='REP-MET-CAS',
+            producto='Palta',
+            lote='L-M2',
+            totalPesoNeto=Decimal('200.0'),
+            totalJabas=20,
+            tenant=self.tenant2
+        )
+
+        self.client.force_authenticate(user=self.superuser)
+
+        # Scoped to Casma via X-Tenant-ID header
+        res = self.client.get('/reports/dashboard_metrics/', HTTP_X_TENANT_ID=str(self.tenant2.id))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_kilos'], 200.0)
+        self.assertEqual(res.data['total_jabas'], 20)
+        self.assertEqual(res.data['total_cargas'], 1)
+        self.assertEqual(len(res.data['by_product']), 1)
+        self.assertEqual(res.data['by_product'][0]['producto'], 'Palta')

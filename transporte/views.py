@@ -31,15 +31,16 @@ class TransportCompanyViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return queryset.none()
 
-        if user.role == 'superadmin' or user.is_superuser:
-            tenant_id = self.request.query_params.get('tenant')
-            if tenant_id:
-                queryset = queryset.filter(tenant_id=tenant_id)
+        if getattr(user, 'role', None) == 'superadmin' or user.is_superuser:
+            tenant_id = self.request.headers.get('X-Tenant-ID') or self.request.query_params.get('tenant')
+            if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                try:
+                    queryset = queryset.filter(tenant_id=int(tenant_id))
+                except (ValueError, TypeError):
+                    queryset = queryset.filter(tenant_id=tenant_id)
             return queryset
 
-        if user.tenant:
-            queryset = queryset.filter(tenant=user.tenant)
-        return queryset
+        return queryset.filter(tenant=user.tenant)
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -71,6 +72,23 @@ class DriverViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'license_number', 'created_at']
     ordering = ['name']
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return queryset.none()
+
+        if getattr(user, 'role', None) == 'superadmin' or user.is_superuser:
+            tenant_id = self.request.headers.get('X-Tenant-ID') or self.request.query_params.get('tenant')
+            if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                try:
+                    queryset = queryset.filter(company__tenant_id=int(tenant_id))
+                except (ValueError, TypeError):
+                    queryset = queryset.filter(company__tenant_id=tenant_id)
+            return queryset
+
+        return queryset.filter(company__tenant=user.tenant)
+
     @action(detail=False, methods=['get'])
     def all(self, request):
         """Devuelve todos los choferes activos sin paginación"""
@@ -90,6 +108,23 @@ class VehicleViewSet(viewsets.ModelViewSet):
     search_fields = ['plate', 'brand_model']
     ordering_fields = ['plate', 'created_at']
     ordering = ['plate']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return queryset.none()
+
+        if getattr(user, 'role', None) == 'superadmin' or user.is_superuser:
+            tenant_id = self.request.headers.get('X-Tenant-ID') or self.request.query_params.get('tenant')
+            if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                try:
+                    queryset = queryset.filter(company__tenant_id=int(tenant_id))
+                except (ValueError, TypeError):
+                    queryset = queryset.filter(company__tenant_id=tenant_id)
+            return queryset
+
+        return queryset.filter(company__tenant=user.tenant)
 
     @action(detail=False, methods=['get'])
     def all(self, request):

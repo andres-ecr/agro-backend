@@ -5,9 +5,19 @@ from django.conf import settings
 class Product(models.Model):
     """Model for products"""
     
+    # Tenant / Sede
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='products',
+        null=True,
+        blank=True,
+        verbose_name="Sede"
+    )
+    
     # Product information
     name = models.CharField(max_length=100)
-    code = models.CharField(max_length=50, unique=True)
+    code = models.CharField(max_length=50, unique=False, db_index=True)
     description = models.TextField(blank=True, null=True)
     
     # Product type
@@ -63,6 +73,10 @@ class Product(models.Model):
         null=True,
         related_name='products'
     )
+    
+    class Meta:
+        unique_together = [('tenant', 'code')]
+        ordering = ['name']
     
     def __str__(self):
         return f"{self.name} ({self.code})"

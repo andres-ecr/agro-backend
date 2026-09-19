@@ -107,3 +107,87 @@ class ProductVarietyTests(TestCase):
         self.assertIn('varieties', prod_data)
         self.assertEqual(len(prod_data['varieties']), 1)
         self.assertEqual(prod_data['varieties'][0]['name'], 'Variety Alpha')
+
+
+class TenantScopedProductTests(TestCase):
+    def setUp(self):
+        from tenants.models import Tenant
+        self.tenant_ica = Tenant.objects.create(name='Sede Ica', code='ica')
+        self.tenant_casma = Tenant.objects.create(name='Sede Casma', code='casma')
+
+        self.user_ica = User.objects.create_user(
+            email='ica_user@example.com',
+            password='password123',
+            role='supervisor',
+            tenant=self.tenant_ica
+        )
+        self.user_casma = User.objects.create_user(
+            email='casma_user@example.com',
+            password='password123',
+            role='supervisor',
+            tenant=self.tenant_casma
+        )
+        self.superadmin = User.objects.create_user(
+            email='superadmin@example.com',
+            password='password123',
+            role='superadmin',
+            is_superuser=True
+        )
+
+        self.prod_ica = Product.objects.create(
+            name='Palta Ica',
+            code='PALTA',
+            tenant=self.tenant_ica,
+            created_by=self.user_ica
+        )
+        self.prod_casma = Product.objects.create(
+            name='Palta Casma',
+            code='PALTA',
+            tenant=self.tenant_casma,
+            created_by=self.user_casma
+        )
+
+    def test_same_code_different_tenants(self):
+        """Verify that same code can exist across different tenants"""
+        self.assertEqual(self.prod_ica.code, self.prod_casma.code)
+        self.assertNotEqual(self.prod_ica.tenant, self.prod_casma.tenant)
+
+    def test_tenant_user_sees_only_own_products(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user_ica)
+        response = client.get('/inventory/products/')
+        self.assertEqual(response.status_code, 200)
+        results = response.data.get('results', response.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['id'], self.prod_ica.id)
+
+    def test_superadmin_sees_all_or_filtered_by_header(self):
+        client = APIClient()
+        client.force_authenticate(user=self.superadmin)
+        
+        # All products
+        response = client.get('/inventory/products/')
+        self.assertEqual(response.status_code, 200)
+        results = response.data.get('results', response.data)
+        self.assertEqual(len(results), 2)
+
+        # Filtered by X-Tenant-ID header
+        response = client.get('/inventory/products/', HTTP_X_TENANT_ID=str(self.tenant_ica.id))
+        self.assertEqual(response.status_code, 200)
+        results = response.data.get('results', response.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['id'], self.prod_ica.id)
+
+    def test_create_product_assigns_tenant_automatically(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user_casma)
+        data = {
+            'name': 'Mango Casma',
+            'code': 'MANGO-01',
+            'product_type': 'finished',
+            'unit': 'kg',
+            'varieties': ['KENT']
+        }
+        response = client.post('/inventory/products/', data=data, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['tenant'], self.tenant_casma.id)

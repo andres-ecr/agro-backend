@@ -12,7 +12,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['product_type', 'unit']
+    filterset_fields = ['product_type', 'unit', 'tenant']
     search_fields = ['name', 'code', 'description']
     ordering_fields = ['name', 'code', 'created_at']
     ordering = ['name']
@@ -25,6 +25,44 @@ class ProductViewSet(viewsets.ModelViewSet):
             permission_classes = [permissions.IsAuthenticated]
         
         return [permission() for permission in permission_classes]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return queryset.none()
+        
+        if getattr(user, 'role', None) == 'superadmin' or user.is_superuser:
+            tenant_id = self.request.headers.get('X-Tenant-ID') or self.request.query_params.get('tenant')
+            if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                try:
+                    queryset = queryset.filter(tenant_id=int(tenant_id))
+                except (ValueError, TypeError):
+                    queryset = queryset.filter(tenant_id=tenant_id)
+            return queryset
+        
+        if getattr(user, 'tenant', None):
+            return queryset.filter(tenant=user.tenant)
+        
+        return queryset
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if getattr(user, 'role', None) == 'superadmin' or user.is_superuser:
+            tenant = serializer.validated_data.get('tenant')
+            if not tenant:
+                tenant_id = self.request.headers.get('X-Tenant-ID') or self.request.query_params.get('tenant')
+                if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                    try:
+                        from tenants.models import Tenant
+                        tenant = Tenant.objects.filter(id=int(tenant_id)).first()
+                    except (ValueError, TypeError):
+                        pass
+            if not tenant and getattr(user, 'tenant', None):
+                tenant = user.tenant
+            serializer.save(created_by=user, tenant=tenant)
+        else:
+            serializer.save(created_by=user, tenant=user.tenant)
 
 
 class WarehouseViewSet(viewsets.ModelViewSet):

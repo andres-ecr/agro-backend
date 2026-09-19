@@ -19,6 +19,7 @@ class ProductVarietySerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     """Serializer for products"""
     
+    tenant_name = serializers.ReadOnlyField(source='tenant.name')
     product_type_display = serializers.SerializerMethodField()
     unit_display = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
@@ -27,11 +28,11 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = (
-            'id', 'name', 'code', 'description', 'product_type', 'product_type_display',
+            'id', 'tenant', 'tenant_name', 'name', 'code', 'description', 'product_type', 'product_type_display',
             'unit', 'unit_display', 'cost', 'price', 'varieties',
             'created_at', 'updated_at', 'created_by', 'created_by_name'
         )
-        read_only_fields = ('id', 'created_at', 'updated_at', 'created_by', 'created_by_name', 'product_type_display', 'unit_display')
+        read_only_fields = ('id', 'created_at', 'updated_at', 'created_by', 'created_by_name', 'product_type_display', 'unit_display', 'tenant_name')
 
     def to_internal_value(self, data):
         if 'varieties' in data and isinstance(data['varieties'], list):
@@ -70,6 +71,19 @@ class ProductSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and hasattr(request, 'user') and request.user.is_authenticated:
             validated_data['created_by'] = request.user
+            if 'tenant' not in validated_data:
+                if getattr(request.user, 'role', None) != 'superadmin' and not request.user.is_superuser:
+                    validated_data['tenant'] = getattr(request.user, 'tenant', None)
+                else:
+                    tenant_id = request.headers.get('X-Tenant-ID') if hasattr(request, 'headers') else None
+                    if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                        try:
+                            from tenants.models import Tenant
+                            validated_data['tenant'] = Tenant.objects.filter(id=int(tenant_id)).first()
+                        except (ValueError, TypeError):
+                            pass
+                    if 'tenant' not in validated_data and getattr(request.user, 'tenant', None):
+                        validated_data['tenant'] = request.user.tenant
         
         product = super().create(validated_data)
 

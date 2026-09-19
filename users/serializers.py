@@ -8,15 +8,17 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for the users object"""
     tenant_details = serializers.SerializerMethodField(read_only=True)
+    organization_details = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = User
         fields = (
             'id', 'email', 'password', 'first_name', 'last_name',
-            'role', 'avatar', 'tenant', 'tenant_details', 'is_active',
+            'role', 'avatar', 'organization', 'organization_details',
+            'tenant', 'tenant_details', 'is_active',
             'is_superuser', 'date_joined'
         )
-        read_only_fields = ('id', 'tenant_details', 'date_joined')
+        read_only_fields = ('id', 'organization_details', 'tenant_details', 'date_joined')
         extra_kwargs = {
             'password': {'write_only': True, 'required': False, 'allow_blank': True}
         }
@@ -27,6 +29,17 @@ class UserSerializer(serializers.ModelSerializer):
                 'id': obj.tenant.id,
                 'code': obj.tenant.code,
                 'name': obj.tenant.name,
+            }
+        return None
+
+    def get_organization_details(self, obj):
+        org = obj.organization or (obj.tenant.organization if obj.tenant else None)
+        if org:
+            return {
+                'id': org.id,
+                'code': org.code,
+                'name': org.name,
+                'ruc': org.ruc,
             }
         return None
     
@@ -55,14 +68,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
     
     full_name = serializers.SerializerMethodField()
     tenant = serializers.SerializerMethodField()
+    organization = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = (
             'id', 'email', 'first_name', 'last_name', 'full_name',
-            'role', 'avatar', 'tenant', 'is_active', 'is_superuser'
+            'role', 'avatar', 'organization', 'tenant', 'is_active', 'is_superuser'
         )
-        read_only_fields = ('email', 'role', 'tenant', 'is_superuser')
+        read_only_fields = ('email', 'role', 'organization', 'tenant', 'is_superuser')
     
     def get_full_name(self, obj):
         return obj.get_full_name()
@@ -73,6 +87,17 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 'id': obj.tenant.id,
                 'code': obj.tenant.code,
                 'name': obj.tenant.name,
+            }
+        return None
+
+    def get_organization(self, obj):
+        org = obj.organization or (obj.tenant.organization if obj.tenant else None)
+        if org:
+            return {
+                'id': org.id,
+                'code': org.code,
+                'name': org.name,
+                'ruc': org.ruc,
             }
         return None
 
@@ -92,6 +117,16 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'code': user.tenant.code,
                 'name': user.tenant.name,
             }
+
+        org = user.organization or (user.tenant.organization if user.tenant else None)
+        org_data = None
+        if org:
+            org_data = {
+                'id': org.id,
+                'code': org.code,
+                'name': org.name,
+                'ruc': org.ruc,
+            }
             
         data['user'] = {
             'id': user.id,
@@ -103,6 +138,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'is_superuser': user.is_superuser,
             'is_active': user.is_active,
             'avatar': user.avatar.url if user.avatar else None,
+            'organization': org_data,
             'tenant': tenant_data,
         }
         

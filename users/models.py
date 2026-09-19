@@ -65,6 +65,14 @@ class User(AbstractUser):
     )
     
     avatar = models.FileField(upload_to='avatars/', null=True, blank=True)
+    organization = models.ForeignKey(
+        'tenants.Organization',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='users',
+        verbose_name=_('organization')
+    )
     tenant = models.ForeignKey(
         'tenants.Tenant',
         on_delete=models.SET_NULL,

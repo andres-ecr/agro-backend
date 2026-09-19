@@ -1,8 +1,35 @@
 from django.db import models
 
 
+class Organization(models.Model):
+    """Modelo para organizaciones / empresas (e.g. AgroExport del Sur, Frutas del Norte)"""
+    name = models.CharField(max_length=150, verbose_name="Razón Social / Nombre")
+    code = models.CharField(max_length=50, unique=True, verbose_name="Código")
+    ruc = models.CharField(max_length=20, blank=True, null=True, verbose_name="RUC")
+    address = models.CharField(max_length=255, blank=True, null=True, verbose_name="Dirección")
+    is_active = models.BooleanField(default=True, verbose_name="Activo")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Fecha de actualización")
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = "Organización"
+        verbose_name_plural = "Organizaciones"
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+
 class Tenant(models.Model):
     """Modelo para sedes / tenants (e.g. Sede Ica, Sede Casma)"""
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='sedes',
+        null=True,
+        blank=True,
+        verbose_name="Organización / Empresa"
+    )
     name = models.CharField(max_length=100, verbose_name="Nombre")
     code = models.CharField(max_length=50, unique=True, verbose_name="Código")
     ruc = models.CharField(max_length=20, blank=True, null=True, verbose_name="RUC")

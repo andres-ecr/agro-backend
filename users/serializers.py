@@ -7,15 +7,36 @@ User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for the users object"""
+    tenant_details = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = User
-        fields = ('id', 'email', 'password', 'first_name', 'last_name', 'role', 'avatar')
-        extra_kwargs = {'password': {'write_only': True, 'min_length': 5}}
+        fields = (
+            'id', 'email', 'password', 'first_name', 'last_name',
+            'role', 'avatar', 'tenant', 'tenant_details', 'is_active',
+            'is_superuser', 'date_joined'
+        )
+        read_only_fields = ('id', 'tenant_details', 'date_joined')
+        extra_kwargs = {
+            'password': {'write_only': True, 'required': False, 'allow_blank': True}
+        }
+    
+    def get_tenant_details(self, obj):
+        if obj.tenant:
+            return {
+                'id': obj.tenant.id,
+                'code': obj.tenant.code,
+                'name': obj.tenant.name,
+            }
+        return None
     
     def create(self, validated_data):
         """Create a new user with encrypted password and return it"""
-        return User.objects.create_user(**validated_data)
+        password = validated_data.pop('password', None)
+        if not password:
+            raise serializers.ValidationError({'password': 'La contraseña es obligatoria para nuevos usuarios.'})
+        user = User.objects.create_user(password=password, **validated_data)
+        return user
     
     def update(self, instance, validated_data):
         """Update a user, setting the password correctly and return it"""
@@ -33,14 +54,27 @@ class UserProfileSerializer(serializers.ModelSerializer):
     """Serializer for user profile"""
     
     full_name = serializers.SerializerMethodField()
+    tenant = serializers.SerializerMethodField()
     
     class Meta:
         model = User
-        fields = ('id', 'email', 'first_name', 'last_name', 'full_name', 'role', 'avatar')
-        read_only_fields = ('email', 'role')
+        fields = (
+            'id', 'email', 'first_name', 'last_name', 'full_name',
+            'role', 'avatar', 'tenant', 'is_active', 'is_superuser'
+        )
+        read_only_fields = ('email', 'role', 'tenant', 'is_superuser')
     
     def get_full_name(self, obj):
         return obj.get_full_name()
+
+    def get_tenant(self, obj):
+        if obj.tenant:
+            return {
+                'id': obj.tenant.id,
+                'code': obj.tenant.code,
+                'name': obj.tenant.name,
+            }
+        return None
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -51,6 +85,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         
         # Add user data to response
         user = self.user
+        tenant_data = None
+        if user.tenant:
+            tenant_data = {
+                'id': user.tenant.id,
+                'code': user.tenant.code,
+                'name': user.tenant.name,
+            }
+            
         data['user'] = {
             'id': user.id,
             'email': user.email,
@@ -58,7 +100,10 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'last_name': user.last_name,
             'full_name': user.get_full_name(),
             'role': user.role,
+            'is_superuser': user.is_superuser,
+            'is_active': user.is_active,
             'avatar': user.avatar.url if user.avatar else None,
+            'tenant': tenant_data,
         }
         
         return data

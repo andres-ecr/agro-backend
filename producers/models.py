@@ -23,6 +23,14 @@ class Producer(models.Model):
         related_name='producers',
         verbose_name="Creado por"
     )
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='producers',
+        null=True,
+        blank=True,
+        verbose_name='Sede'
+    )
     
     class Meta:
         ordering = ['code']
@@ -31,3 +39,27 @@ class Producer(models.Model):
     
     def __str__(self):
         return f"{self.code} - {self.name}"
+
+
+class ProducerCLP(models.Model):
+    """Modelo para múltiples códigos de Lugar de Producción (CLP) de un productor"""
+    producer = models.ForeignKey(
+        Producer,
+        on_delete=models.CASCADE,
+        related_name='clp_list',
+        verbose_name="Productor"
+    )
+    code = models.CharField(max_length=100, verbose_name="Código CLP")
+    lugar_produccion = models.CharField(max_length=200, blank=True, null=True, verbose_name="Lugar de Producción")
+    is_active = models.BooleanField(default=True, verbose_name="Activo")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Fecha de actualización")
+
+    class Meta:
+        ordering = ['code']
+        verbose_name = "CLP de Productor"
+        verbose_name_plural = "CLPs de Productores"
+
+    def __str__(self):
+        return f"{self.producer.name} - CLP: {self.code}"
+

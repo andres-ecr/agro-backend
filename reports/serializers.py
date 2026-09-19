@@ -9,14 +9,18 @@ class ReportSerializer(serializers.ModelSerializer):
     datosGenerales = serializers.JSONField(required=False)
     totales = serializers.JSONField(required=False)
     
+    tenant_name = serializers.ReadOnlyField(source='tenant.name')
+    created_by_name = serializers.ReadOnlyField(source='created_by.get_full_name')
+    
     class Meta:
         model = Report
         fields = (
             'id', 'registros', 'datosGenerales', 'totales', 
             'timestamp', 'incrementLote', 'status', 'created_at',
-            'producto', 'lote', 'totalPesoBruto', 'totalPesoNeto', 'totalJabas'
+            'producto', 'lote', 'totalPesoBruto', 'totalPesoNeto', 'totalJabas',
+            'tenant', 'tenant_name', 'created_by', 'created_by_name'
         )
-        read_only_fields = ['created_at', 'producto', 'lote', 'totalPesoBruto', 'totalPesoNeto', 'totalJabas']
+        read_only_fields = ['created_at', 'producto', 'lote', 'totalPesoBruto', 'totalPesoNeto', 'totalJabas', 'tenant', 'tenant_name', 'created_by', 'created_by_name']
     
     def create(self, validated_data):
         try:
@@ -50,9 +54,14 @@ class ReportSerializer(serializers.ModelSerializer):
             except:
                 totalJabas = 0
             
+            created_by = validated_data.get('created_by')
+            tenant = validated_data.get('tenant')
+
             # Crear el reporte
             report = Report(
                 id=validated_data.get('id'),
+                created_by=created_by,
+                tenant=tenant,
                 producto=producto,
                 lote=lote,
                 timestamp=validated_data.get('timestamp'),
@@ -98,9 +107,42 @@ class ReportSerializer(serializers.ModelSerializer):
         return representation
 
 class ReportListSerializer(serializers.ModelSerializer):
+    tenant_name = serializers.ReadOnlyField(source='tenant.name')
+    productor = serializers.SerializerMethodField()
+    placa = serializers.SerializerMethodField()
+    carga = serializers.SerializerMethodField()
+
     class Meta:
         model = Report
         fields = (
             'id', 'producto', 'lote', 'created_at', 
-            'totalPesoNeto', 'status'
+            'totalPesoNeto', 'status', 'tenant', 'tenant_name',
+            'productor', 'placa', 'carga'
         )
+
+    def get_productor(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('productor', '')
+            except Exception:
+                return ''
+        return ''
+
+    def get_placa(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('placaVehiculo') or data.get('placa') or data.get('datosTransporte') or ''
+            except Exception:
+                return ''
+        return ''
+
+    def get_carga(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('carga', '')
+            except Exception:
+                return ''
+        return ''

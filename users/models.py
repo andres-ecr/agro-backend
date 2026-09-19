@@ -46,14 +46,16 @@ class User(AbstractUser):
     last_name = models.CharField(_('last name'), max_length=150)
     
     # Role choices
+    ROLE_SUPERADMIN = 'superadmin'
     ROLE_ADMIN = 'admin'
     ROLE_SUPERVISOR = 'supervisor'
     ROLE_OPERATOR = 'operator'
     
     ROLE_CHOICES = [
-        (ROLE_ADMIN, _('Administrator')),
+        (ROLE_SUPERADMIN, _('Super Admin')),
+        (ROLE_ADMIN, _('Administrador de Sede')),
         (ROLE_SUPERVISOR, _('Supervisor')),
-        (ROLE_OPERATOR, _('Operator')),
+        (ROLE_OPERATOR, _('Operario')),
     ]
     
     role = models.CharField(
@@ -63,6 +65,14 @@ class User(AbstractUser):
     )
     
     avatar = models.FileField(upload_to='avatars/', null=True, blank=True)
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='users',
+        verbose_name=_('tenant')
+    )
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['first_name', 'last_name']

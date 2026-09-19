@@ -30,13 +30,18 @@ urlpatterns = [
     # API endpoints - sin el prefijo api/v1/
     path('auth/', include('users.urls')),
     path('users/', include('users.urls')),  # Añadir esta línea
+    path('tenants/', include('tenants.urls')),
+    path('transporte/', include('transporte.urls')),
     path('reports/', include('reports.urls')),
     path('trazabilidad/', include('trazabilidad.urls')),
     path('inventory/', include('inventory.urls')),
-   path('producers/', include('producers.urls')),
+    path('producers/', include('producers.urls')),
     
     # Mantener también las rutas con prefijo para compatibilidad
     path('api/v1/auth/', include('users.urls')),
+    path('api/v1/users/', include('users.urls')),
+    path('api/v1/tenants/', include('tenants.urls')),
+    path('api/v1/transporte/', include('transporte.urls')),
     path('api/v1/reports/', include('reports.urls')),
     path('api/v1/trazabilidad/', include('trazabilidad.urls')),
     path('api/v1/inventory/', include('inventory.urls')),

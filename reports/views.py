@@ -11,6 +11,7 @@ from rest_framework.decorators import action
 import json
 from django.db.models import Sum, Avg, Count, Q
 from django.utils.dateparse import parse_date
+from django.utils import timezone
 from decimal import Decimal
 
 class ReportFilter(django_filters.FilterSet):
@@ -22,6 +23,8 @@ class ReportFilter(django_filters.FilterSet):
     productor = django_filters.CharFilter(method='filter_productor')
     placa = django_filters.CharFilter(method='filter_placa')
     licencia = django_filters.CharFilter(method='filter_licencia')
+    carga = django_filters.CharFilter(method='filter_carga')
+    clp = django_filters.CharFilter(method='filter_clp')
     
     def filter_productor(self, queryset, name, value):
         """Filtrar por productor (búsqueda parcial en datosGenerales_json)"""
@@ -39,9 +42,17 @@ class ReportFilter(django_filters.FilterSet):
         # Buscar el valor de forma parcial e insensible a mayúsculas/minúsculas
         return queryset.filter(datosGenerales_json__icontains=value.upper())
     
+    def filter_carga(self, queryset, name, value):
+        """Filtrar por carga (búsqueda parcial en datosGenerales_json)"""
+        return queryset.filter(datosGenerales_json__icontains=value)
+    
+    def filter_clp(self, queryset, name, value):
+        """Filtrar por clp (búsqueda parcial en datosGenerales_json)"""
+        return queryset.filter(datosGenerales_json__icontains=value)
+    
     class Meta:
         model = Report
-        fields = ['fecha_desde', 'fecha_hasta', 'lote', 'producto', 'productor', 'placa', 'licencia']
+        fields = ['fecha_desde', 'fecha_hasta', 'lote', 'producto', 'productor', 'placa', 'licencia', 'carga', 'clp']
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 10
@@ -58,6 +69,14 @@ class ReportViewSet(viewsets.ModelViewSet):
     ordering_fields = ['created_at', 'producto', 'lote', 'totalPesoNeto']
     ordering = ['-created_at']
     permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = Report.objects.all()
+        user = self.request.user
+        if user.is_authenticated and not user.is_superuser:
+            if getattr(user, 'tenant', None):
+                queryset = queryset.filter(tenant=user.tenant)
+        return queryset
     
     def get_serializer_class(self):
         if self.action == 'list':
@@ -77,7 +96,10 @@ class ReportViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        serializer.save(
+            created_by=self.request.user,
+            tenant=getattr(self.request.user, 'tenant', None)
+        )
     
     @action(detail=False, methods=['get'])
     def summary(self, request):
@@ -110,6 +132,59 @@ class ReportViewSet(viewsets.ModelViewSet):
         stats['promedio_reporte'] = float(promedio_reporte)
         
         return Response(stats)
+
+    @action(detail=False, methods=['get'])
+    def dashboard_metrics(self, request):
+        """
+        Dashboard metrics:
+        - Totales hoy: kilos_hoy, jabas_hoy, cargas_hoy
+        - Totales globales: total_kilos, total_jabas, total_cargas
+        - Desglose por producto: queryset.values('producto').annotate(kilos=Sum('totalPesoNeto'), jabas=Sum('totalJabas'), cargas=Count('id')).order_by('-kilos')
+        - Últimas 5 recepciones: ReportListSerializer(queryset.order_by('-created_at')[:5], many=True).data
+        """
+        queryset = self.get_queryset()
+        today = timezone.now().date()
+        today_qs = queryset.filter(created_at__date=today)
+
+        today_stats = today_qs.aggregate(
+            kilos_hoy=Sum('totalPesoNeto'),
+            jabas_hoy=Sum('totalJabas'),
+            cargas_hoy=Count('id')
+        )
+
+        total_stats = queryset.aggregate(
+            total_kilos=Sum('totalPesoNeto'),
+            total_jabas=Sum('totalJabas'),
+            total_cargas=Count('id')
+        )
+
+        by_product = [
+            {
+                'producto': item['producto'],
+                'kilos': float(item['kilos'] or 0),
+                'jabas': item['jabas'] or 0,
+                'cargas': item['cargas'] or 0,
+            }
+            for item in queryset.values('producto').annotate(
+                kilos=Sum('totalPesoNeto'),
+                jabas=Sum('totalJabas'),
+                cargas=Count('id')
+            ).order_by('-kilos')
+        ]
+
+        recent_reports = queryset.order_by('-created_at')[:5]
+        recent_serialized = ReportListSerializer(recent_reports, many=True).data
+
+        return Response({
+            'kilos_hoy': float(today_stats['kilos_hoy'] or 0),
+            'jabas_hoy': today_stats['jabas_hoy'] or 0,
+            'cargas_hoy': today_stats['cargas_hoy'] or 0,
+            'total_kilos': float(total_stats['total_kilos'] or 0),
+            'total_jabas': total_stats['total_jabas'] or 0,
+            'total_cargas': total_stats['total_cargas'] or 0,
+            'by_product': by_product,
+            'recent_reports': recent_serialized,
+        })
     
     @action(detail=False, methods=['get'])
     def test_filters(self, request):

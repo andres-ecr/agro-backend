@@ -7,6 +7,8 @@ class Organization(models.Model):
     code = models.CharField(max_length=50, unique=True, verbose_name="Código")
     ruc = models.CharField(max_length=20, blank=True, null=True, verbose_name="RUC")
     address = models.CharField(max_length=255, blank=True, null=True, verbose_name="Dirección")
+    logo = models.FileField(upload_to='organizations/logos/', blank=True, null=True, verbose_name="Logo")
+    logo_url = models.CharField(max_length=500, blank=True, null=True, verbose_name="URL del Logo")
     is_active = models.BooleanField(default=True, verbose_name="Activo")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Fecha de actualización")
@@ -15,6 +17,11 @@ class Organization(models.Model):
         ordering = ['name']
         verbose_name = "Organización"
         verbose_name_plural = "Organizaciones"
+
+    def get_logo_url(self):
+        if self.logo:
+            return self.logo.url
+        return self.logo_url
 
     def __str__(self):
         return f"{self.name} ({self.code})"
@@ -34,6 +41,8 @@ class Tenant(models.Model):
     code = models.CharField(max_length=50, unique=True, verbose_name="Código")
     ruc = models.CharField(max_length=20, blank=True, null=True, verbose_name="RUC")
     address = models.CharField(max_length=255, blank=True, null=True, verbose_name="Dirección")
+    logo = models.FileField(upload_to='tenants/logos/', blank=True, null=True, verbose_name="Logo")
+    logo_url = models.CharField(max_length=500, blank=True, null=True, verbose_name="URL del Logo")
     allowed_roles = models.JSONField(
         default=list,
         blank=True,
@@ -47,6 +56,15 @@ class Tenant(models.Model):
         ordering = ['name']
         verbose_name = "Sede / Tenant"
         verbose_name_plural = "Sedes / Tenants"
+
+    def get_logo_url(self):
+        if self.logo:
+            return self.logo.url
+        if self.logo_url:
+            return self.logo_url
+        if self.organization:
+            return self.organization.get_logo_url()
+        return None
 
     def __str__(self):
         return f"{self.name} ({self.code})"

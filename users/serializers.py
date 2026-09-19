@@ -29,6 +29,7 @@ class UserSerializer(serializers.ModelSerializer):
                 'id': obj.tenant.id,
                 'code': obj.tenant.code,
                 'name': obj.tenant.name,
+                'logo_url': obj.tenant.get_logo_url(),
             }
         return None
 
@@ -40,6 +41,7 @@ class UserSerializer(serializers.ModelSerializer):
                 'code': org.code,
                 'name': org.name,
                 'ruc': org.ruc,
+                'logo_url': org.get_logo_url(),
             }
         return None
     
@@ -116,6 +118,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'id': user.tenant.id,
                 'code': user.tenant.code,
                 'name': user.tenant.name,
+                'logo_url': user.tenant.get_logo_url(),
             }
 
         org = user.organization or (user.tenant.organization if user.tenant else None)
@@ -126,6 +129,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'code': org.code,
                 'name': org.name,
                 'ruc': org.ruc,
+                'logo_url': org.get_logo_url(),
             }
             
         data['user'] = {

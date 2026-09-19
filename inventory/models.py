@@ -68,6 +68,29 @@ class Product(models.Model):
         return f"{self.name} ({self.code})"
 
 
+class ProductVariety(models.Model):
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='varieties',
+        verbose_name="Producto"
+    )
+    name = models.CharField(max_length=100, verbose_name="Nombre de la Variedad")
+    code = models.CharField(max_length=50, blank=True, null=True, verbose_name="Código")
+    is_active = models.BooleanField(default=True, verbose_name="Activo")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = "Variedad de Producto"
+        verbose_name_plural = "Variedades de Producto"
+        unique_together = ['product', 'name']
+
+    def __str__(self):
+        return f"{self.product.name} - {self.name}"
+
+
 class Warehouse(models.Model):
     """Model for warehouses"""
     

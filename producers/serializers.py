@@ -90,5 +90,5 @@ class ProducerListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Producer
-        fields = ('id', 'tenant', 'tenant_name', 'code', 'name', 'clp', 'clp_list')
+        fields = ('id', 'tenant', 'tenant_name', 'code', 'name', 'clp', 'address', 'phone', 'email', 'clp_list')
 

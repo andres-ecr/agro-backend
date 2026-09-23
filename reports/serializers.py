@@ -31,7 +31,7 @@ class ReportSerializer(serializers.ModelSerializer):
             
             # Extraer campos de datosGenerales para almacenar en campos directos
             producto = datosGenerales.get('producto', '')
-            lote = datosGenerales.get('lote', '')
+            lote = datosGenerales.get('carga') or datosGenerales.get('lote', '')
             
             # Extraer campos de totales para almacenar en campos directos
             totalPesoBruto = totales.get('totalPesoBruto', '0.0')

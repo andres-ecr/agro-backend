@@ -286,3 +286,66 @@ class ReportTenantAndFilterTests(TestCase):
         self.assertEqual(res.data['total_cargas'], 1)
         self.assertEqual(len(res.data['by_product']), 1)
         self.assertEqual(res.data['by_product'][0]['producto'], 'Palta')
+
+    def test_dashboard_metrics_filters_by_clp_and_transportista(self):
+        self.client.force_authenticate(user=self.superuser)
+        Report.objects.create(
+            id='REP-FILT-1',
+            producto='Uva',
+            lote='CRG-001',
+            totalPesoNeto=Decimal('500.0'),
+            totalJabas=50,
+            datosGenerales_json=json.dumps({
+                'clp': 'CLP-ICA-999',
+                'empresaTransporte': 'Transportes del Sur'
+            })
+        )
+        Report.objects.create(
+            id='REP-FILT-2',
+            producto='Palta',
+            lote='CRG-002',
+            totalPesoNeto=Decimal('300.0'),
+            totalJabas=30,
+            datosGenerales_json=json.dumps({
+                'clp': 'CLP-CAS-888',
+                'empresaTransporte': 'Transportes del Norte'
+            })
+        )
+
+        # Filter by clp
+        res_clp = self.client.get('/reports/dashboard_metrics/?clp=CLP-ICA-999')
+        self.assertEqual(res_clp.status_code, status.HTTP_200_OK)
+        self.assertTrue(res_clp.data['is_filtered'])
+        self.assertEqual(res_clp.data['filtered_kilos'], 500.0)
+        self.assertEqual(res_clp.data['filtered_cargas'], 1)
+
+        # Filter by transportista
+        res_trans = self.client.get('/reports/dashboard_metrics/?transportista=Norte')
+        self.assertEqual(res_trans.status_code, status.HTTP_200_OK)
+        self.assertTrue(res_trans.data['is_filtered'])
+        self.assertEqual(res_trans.data['filtered_kilos'], 300.0)
+        self.assertEqual(res_trans.data['filtered_cargas'], 1)
+
+    def test_create_report_with_carga_only_sets_lote(self):
+        self.client.force_authenticate(user=self.user_ica)
+        payload = {
+            'id': 'REP-CARGA-ONLY',
+            'datosGenerales': {
+                'producto': 'Uva',
+                'carga': 'CRG-EXCLUSIVA-99',
+                'clp': 'CLP-ICA-01'
+            },
+            'registros': [
+                {'jabas': 10, 'pesoBruto': 150.0, 'pesoParihuela': 20.0, 'pesoJaba': 1.5, 'tara': 35.0, 'pesoNeto': 115.0}
+            ],
+            'totales': {
+                'totalPesoBruto': '150.0',
+                'totalPesoNeto': '115.0',
+                'totalJabas': 10
+            }
+        }
+        res = self.client.post('/reports/', data=payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        rep = Report.objects.get(id='REP-CARGA-ONLY')
+        self.assertEqual(rep.lote, 'CRG-EXCLUSIVA-99')
+

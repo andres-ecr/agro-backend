@@ -162,13 +162,44 @@ class ReportViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def dashboard_metrics(self, request):
         """
-        Dashboard metrics:
-        - Totales hoy: kilos_hoy, jabas_hoy, cargas_hoy
+        Dashboard metrics with optional filtering by year, month, day, clp, and transportista:
+        - Totales hoy / filtrados: kilos_hoy, jabas_hoy, cargas_hoy, filtered_kilos, etc.
         - Totales globales: total_kilos, total_jabas, total_cargas
-        - Desglose por producto: queryset.values('producto').annotate(kilos=Sum('totalPesoNeto'), jabas=Sum('totalJabas'), cargas=Count('id')).order_by('-kilos')
-        - Últimas 5 recepciones: ReportListSerializer(queryset.order_by('-created_at')[:5], many=True).data
+        - Desglose por producto del queryset activo
+        - Últimas recepciones del queryset activo
         """
         queryset = self.get_queryset()
+
+        # Query filters
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        day = request.query_params.get('day')
+        clp = request.query_params.get('clp')
+        transportista = request.query_params.get('transportista')
+
+        filtered_qs = queryset
+        active_filters = {}
+
+        if year and str(year).isdigit():
+            filtered_qs = filtered_qs.filter(created_at__year=int(year))
+            active_filters['year'] = int(year)
+        if month and str(month).isdigit():
+            filtered_qs = filtered_qs.filter(created_at__month=int(month))
+            active_filters['month'] = int(month)
+        if day and str(day).isdigit():
+            filtered_qs = filtered_qs.filter(created_at__day=int(day))
+            active_filters['day'] = int(day)
+        if clp and str(clp).strip():
+            clp_val = str(clp).strip()
+            filtered_qs = filtered_qs.filter(datosGenerales_json__icontains=clp_val)
+            active_filters['clp'] = clp_val
+        if transportista and str(transportista).strip():
+            trans_val = str(transportista).strip()
+            filtered_qs = filtered_qs.filter(datosGenerales_json__icontains=trans_val)
+            active_filters['transportista'] = trans_val
+
+        is_filtered = bool(active_filters)
+
         today = timezone.now().date()
         today_qs = queryset.filter(created_at__date=today)
 
@@ -184,6 +215,12 @@ class ReportViewSet(viewsets.ModelViewSet):
             total_cargas=Count('id')
         )
 
+        filtered_stats = filtered_qs.aggregate(
+            filtered_kilos=Sum('totalPesoNeto'),
+            filtered_jabas=Sum('totalJabas'),
+            filtered_cargas=Count('id')
+        )
+
         by_product = [
             {
                 'producto': item['producto'],
@@ -191,20 +228,25 @@ class ReportViewSet(viewsets.ModelViewSet):
                 'jabas': item['jabas'] or 0,
                 'cargas': item['cargas'] or 0,
             }
-            for item in queryset.values('producto').annotate(
+            for item in filtered_qs.values('producto').annotate(
                 kilos=Sum('totalPesoNeto'),
                 jabas=Sum('totalJabas'),
                 cargas=Count('id')
             ).order_by('-kilos')
         ]
 
-        recent_reports = queryset.order_by('-created_at')[:5]
+        recent_reports = filtered_qs.order_by('-created_at')[:5]
         recent_serialized = ReportListSerializer(recent_reports, many=True).data
 
         return Response({
+            'is_filtered': is_filtered,
+            'active_filters': active_filters,
             'kilos_hoy': float(today_stats['kilos_hoy'] or 0),
             'jabas_hoy': today_stats['jabas_hoy'] or 0,
             'cargas_hoy': today_stats['cargas_hoy'] or 0,
+            'filtered_kilos': float(filtered_stats['filtered_kilos'] or 0),
+            'filtered_jabas': filtered_stats['filtered_jabas'] or 0,
+            'filtered_cargas': filtered_stats['filtered_cargas'] or 0,
             'total_kilos': float(total_stats['total_kilos'] or 0),
             'total_jabas': total_stats['total_jabas'] or 0,
             'total_cargas': total_stats['total_cargas'] or 0,

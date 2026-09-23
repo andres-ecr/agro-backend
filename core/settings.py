@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 from datetime import timedelta
 import dj_database_url
@@ -202,6 +203,10 @@ CORS_EXPOSE_HEADERS = [
 # AlchLab Remote License Server Configuration
 ALCHLAB_LICENSE_SERVER_URL = os.environ.get(
     'ALCHLAB_LICENSE_SERVER_URL', 'http://localhost:3001'
+)
+ALCHLAB_LICENSE_BYPASS = (
+    os.environ.get('ALCHLAB_LICENSE_BYPASS', 'True' if DEBUG else 'False').lower() in ('true', '1', 'yes')
+    and not ('test' in sys.argv)
 )
 
 

@@ -37,6 +37,15 @@ class LicenseService:
         state = cls.get_state()
         now = timezone.now()
 
+        # 0. DEV BYPASS: If explicitly enabled or in development (DEBUG=True)
+        if getattr(settings, 'ALCHLAB_LICENSE_BYPASS', False):
+            return True, 'dev_bypass', 'Modo desarrollo: bypass de licencia activo.', {
+                'is_dev_bypass': True,
+                'customer_name': state.customer_name or 'Ambiente de Desarrollo',
+                'serial_key': state.serial_key or 'DEV-BYPASS-ACTIVE',
+                'machine_id': state.machine_id,
+            }
+
         # 1. PERPETUAL OVERRIDE: If customer completed all milestone payments,
         # the software operates indefinitely without any remote calls.
         if state.is_perpetual:

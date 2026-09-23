@@ -36,6 +36,7 @@ urlpatterns = [
     path('trazabilidad/', include('trazabilidad.urls')),
     path('inventory/', include('inventory.urls')),
     path('producers/', include('producers.urls')),
+    path('license/', include('licensing.urls')),
     
     # Mantener también las rutas con prefijo para compatibilidad
     path('api/v1/auth/', include('users.urls')),
@@ -46,6 +47,7 @@ urlpatterns = [
     path('api/v1/trazabilidad/', include('trazabilidad.urls')),
     path('api/v1/inventory/', include('inventory.urls')),
     path('api/v1/producers/', include('producers.urls')),
+    path('api/v1/license/', include('licensing.urls')),
 ]
 
 if settings.DEBUG:

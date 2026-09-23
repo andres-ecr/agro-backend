@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'inventory',
     'producers',
     'transporte',
+    'licensing',
 ]
 
 MIDDLEWARE = [
@@ -58,6 +59,7 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'licensing.middleware.LicenseEnforcementMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -190,6 +192,17 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = list(default_headers) + [
     'x-tenant-id',
 ]
+
+CORS_EXPOSE_HEADERS = [
+    'x-license-status',
+    'x-license-warning',
+    'x-license-hours-remaining',
+]
+
+# AlchLab Remote License Server Configuration
+ALCHLAB_LICENSE_SERVER_URL = os.environ.get(
+    'ALCHLAB_LICENSE_SERVER_URL', 'http://localhost:3001'
+)
 
 
 # Swagger settings

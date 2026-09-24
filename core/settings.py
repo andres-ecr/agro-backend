@@ -230,7 +230,7 @@ CORS_EXPOSE_HEADERS = [
 
 # AlchLab Remote License Server Configuration
 ALCHLAB_LICENSE_SERVER_URL = os.environ.get(
-    'ALCHLAB_LICENSE_SERVER_URL', 'http://localhost:3001'
+    'ALCHLAB_LICENSE_SERVER_URL', 'https://licenses.alchlab.com'
 )
 ALCHLAB_LICENSE_BYPASS = (
     os.environ.get('ALCHLAB_LICENSE_BYPASS', 'True' if DEBUG else 'False').lower() in ('true', '1', 'yes')

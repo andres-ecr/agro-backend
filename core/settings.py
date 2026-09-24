@@ -212,8 +212,10 @@ SIMPLE_JWT = {
 from corsheaders.defaults import default_headers
 
 CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    'CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000')
+CORS_ALLOWED_ORIGINS = [
+    origin.strip().rstrip('/') for origin in cors_origins_env.split(',') if origin.strip()
+]
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_HEADERS = list(default_headers) + [

@@ -2,9 +2,13 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
+
+def health_check(request):
+    return JsonResponse({'status': 'ok', 'app': 'agro-backend'})
 
 schema_view = get_schema_view(
    openapi.Info(
@@ -20,6 +24,11 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    # Health checks for Docker / Coolify / Traefik
+    path('', health_check, name='root-health'),
+    path('health', health_check, name='health-check-short'),
+    path('health/', health_check, name='health-check'),
+    
     path('admin/', admin.site.urls),
     
     # API documentation

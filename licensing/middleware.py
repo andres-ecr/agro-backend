@@ -4,8 +4,12 @@ from .services import LicenseService
 
 # Routes that are never blocked by license validation
 EXEMPT_URL_PATTERNS = [
+    re.compile(r'^/$'),
+    re.compile(r'^/health/?$'),
     re.compile(r'^/admin/'),
+    re.compile(r'^/license/'),
     re.compile(r'^/api/v1/license/'),
+    re.compile(r'^/auth/'),
     re.compile(r'^/api/v1/auth/'),
     re.compile(r'^/swagger/'),
     re.compile(r'^/redoc/'),

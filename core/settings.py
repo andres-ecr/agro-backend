@@ -24,10 +24,19 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = os.environ.get(
-    'ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',')
-if DEBUG and 'testserver' not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append('testserver')
+allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', '*')
+if allowed_hosts_env == '*' or not allowed_hosts_env:
+    ALLOWED_HOSTS = ['*']
+else:
+    ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip()]
+
+if '*' not in ALLOWED_HOSTS:
+    for default_host in ['localhost', '127.0.0.1', 'testserver']:
+        if default_host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(default_host)
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -91,17 +100,34 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-db_from_env = os.environ.get('DATABASE_URL')
-if not db_from_env or db_from_env == 'sqlite:///db.sqlite3':
+database_url = os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL')
+
+if not database_url and os.environ.get('POSTGRES_HOST'):
+    pg_user = os.environ.get('POSTGRES_USER', 'postgres')
+    pg_pass = os.environ.get('POSTGRES_PASSWORD', '')
+    pg_host = os.environ.get('POSTGRES_HOST', 'localhost')
+    pg_port = os.environ.get('POSTGRES_PORT', '5432')
+    pg_db = os.environ.get('POSTGRES_DB', 'postgres')
+    database_url = f"postgres://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
+
+if not database_url and os.environ.get('DB_HOST'):
+    pg_user = os.environ.get('DB_USER', 'postgres')
+    pg_pass = os.environ.get('DB_PASSWORD', '')
+    pg_host = os.environ.get('DB_HOST', 'localhost')
+    pg_port = os.environ.get('DB_PORT', '5432')
+    pg_db = os.environ.get('DB_NAME', 'postgres')
+    database_url = f"postgres://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
+
+if database_url and database_url != 'sqlite:///db.sqlite3':
+    DATABASES = {
+        'default': dj_database_url.parse(database_url, conn_max_age=600)
+    }
+else:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
         }
-    }
-else:
-    DATABASES = {
-        'default': dj_database_url.config(conn_max_age=600)
     }
 
 # Password validation

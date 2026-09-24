@@ -255,5 +255,4 @@ def seed_production():
     print("==========================================================")
 
 
-if __name__ == '__main__':
-    seed_production()
+seed_production()

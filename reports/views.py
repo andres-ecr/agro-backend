@@ -27,6 +27,8 @@ class ReportFilter(django_filters.FilterSet):
     clp = django_filters.CharFilter(method='filter_clp')
     tenant = django_filters.CharFilter(method='filter_tenant')
     
+    campaign = django_filters.CharFilter(method='filter_campaign')
+
     def filter_productor(self, queryset, name, value):
         """Filtrar por productor (búsqueda parcial en datosGenerales_json)"""
         # Buscar el valor de forma parcial e insensible a mayúsculas/minúsculas
@@ -56,10 +58,20 @@ class ReportFilter(django_filters.FilterSet):
         if not value or str(value).lower() in ('all', 'undefined', 'null'):
             return queryset
         return queryset.filter(tenant_id=value)
+
+    def filter_campaign(self, queryset, name, value):
+        """Filtrar por campaña ('active', ID numérico, nombre o 'all')"""
+        if not value or str(value).lower() in ('all', 'todas', 'undefined', 'null'):
+            return queryset
+        if str(value).lower() in ('active', 'activa', 'activas'):
+            return queryset.filter(campaign__status='active')
+        if str(value).isdigit():
+            return queryset.filter(campaign_id=int(value))
+        return queryset.filter(Q(campaign__name__icontains=value) | Q(campaign__code__icontains=value))
     
     class Meta:
         model = Report
-        fields = ['fecha_desde', 'fecha_hasta', 'lote', 'producto', 'productor', 'placa', 'licencia', 'carga', 'clp', 'tenant']
+        fields = ['fecha_desde', 'fecha_hasta', 'lote', 'producto', 'productor', 'placa', 'licencia', 'carga', 'clp', 'tenant', 'campaign']
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 10
@@ -91,10 +103,16 @@ class ReportViewSet(viewsets.ModelViewSet):
                     queryset = queryset.filter(tenant_id=int(tenant_id))
                 except (ValueError, TypeError):
                     queryset = queryset.filter(tenant_id=tenant_id)
-            return queryset
+        else:
+            # Plant admin or operator: strictly filter by user.tenant (cannot be overridden by header)
+            queryset = queryset.filter(tenant=user.tenant)
 
-        # Plant admin or operator: strictly filter by user.tenant (cannot be overridden by header)
-        return queryset.filter(tenant=user.tenant)
+        # Default campaign filtering: if campaign parameter is not specified, default to active campaign
+        campaign_query = self.request.query_params.get('campaign')
+        if campaign_query is None:
+            queryset = queryset.filter(Q(campaign__status='active') | Q(campaign__isnull=True))
+
+        return queryset
     
     def get_serializer_class(self):
         if self.action == 'list':
@@ -122,9 +140,32 @@ class ReportViewSet(viewsets.ModelViewSet):
                 from tenants.models import Tenant
                 tenant = Tenant.objects.filter(id=tenant_id).first()
 
+        # Extraer el producto del reporte
+        datos_generales = serializer.validated_data.get('datosGenerales') or {}
+        if not datos_generales and hasattr(serializer, 'initial_data'):
+            datos_generales = serializer.initial_data.get('datosGenerales') or {}
+        producto_nombre = datos_generales.get('producto') or serializer.validated_data.get('producto')
+
+        from inventory.models import Campaign
+        from rest_framework.exceptions import ValidationError
+
+        campaign = None
+        if producto_nombre and tenant:
+            campaign = Campaign.objects.filter(
+                tenant=tenant,
+                product__name__iexact=str(producto_nombre).strip(),
+                status='active'
+            ).first()
+
+        if not campaign:
+            raise ValidationError(
+                f"No se puede registrar el pesaje: No existe una campaña activa para el producto '{producto_nombre}' en esta sede. Contacte al administrador de planta para abrir la campaña."
+            )
+
         serializer.save(
             created_by=user,
-            tenant=tenant
+            tenant=tenant,
+            campaign=campaign
         )
     
     @action(detail=False, methods=['get'])

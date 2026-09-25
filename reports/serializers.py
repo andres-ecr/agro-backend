@@ -20,6 +20,7 @@ class ReportSerializer(serializers.ModelSerializer):
     
     tenant_name = serializers.ReadOnlyField(source='tenant.name')
     created_by_name = serializers.ReadOnlyField(source='created_by.get_full_name')
+    campaign_name = serializers.ReadOnlyField(source='campaign.name')
     
     class Meta:
         model = Report
@@ -27,9 +28,14 @@ class ReportSerializer(serializers.ModelSerializer):
             'id', 'registros', 'datosGenerales', 'totales', 
             'timestamp', 'incrementLote', 'status', 'created_at',
             'producto', 'lote', 'totalPesoBruto', 'totalPesoNeto', 'totalJabas',
-            'tenant', 'tenant_name', 'created_by', 'created_by_name'
+            'tenant', 'tenant_name', 'campaign', 'campaign_name',
+            'created_by', 'created_by_name'
         )
-        read_only_fields = ['created_at', 'producto', 'lote', 'totalPesoBruto', 'totalPesoNeto', 'totalJabas', 'tenant', 'tenant_name', 'created_by', 'created_by_name']
+        read_only_fields = [
+            'created_at', 'producto', 'lote', 'totalPesoBruto', 'totalPesoNeto',
+            'totalJabas', 'tenant', 'tenant_name', 'campaign', 'campaign_name',
+            'created_by', 'created_by_name'
+        ]
     
     def create(self, validated_data):
         try:
@@ -65,12 +71,14 @@ class ReportSerializer(serializers.ModelSerializer):
             
             created_by = validated_data.get('created_by')
             tenant = validated_data.get('tenant')
+            campaign = validated_data.get('campaign')
 
             # Crear el reporte
             report = Report(
                 id=validated_data.get('id'),
                 created_by=created_by,
                 tenant=tenant,
+                campaign=campaign,
                 producto=producto,
                 lote=lote,
                 timestamp=validated_data.get('timestamp'),
@@ -117,6 +125,7 @@ class ReportSerializer(serializers.ModelSerializer):
 
 class ReportListSerializer(serializers.ModelSerializer):
     tenant_name = serializers.ReadOnlyField(source='tenant.name')
+    campaign_name = serializers.ReadOnlyField(source='campaign.name')
     productor = serializers.SerializerMethodField()
     placa = serializers.SerializerMethodField()
     carga = serializers.SerializerMethodField()
@@ -126,6 +135,7 @@ class ReportListSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'producto', 'lote', 'created_at', 
             'totalPesoNeto', 'status', 'tenant', 'tenant_name',
+            'campaign', 'campaign_name',
             'productor', 'placa', 'carga'
         )
 

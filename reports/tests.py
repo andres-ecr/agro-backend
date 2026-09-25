@@ -39,6 +39,16 @@ class ReportTenantAndFilterTests(TestCase):
             last_name='User'
         )
 
+        from inventory.models import Product, Campaign
+        self.prod_uva = Product.objects.create(name='Uva', code='UVA', tenant=self.tenant1)
+        self.camp_uva = Campaign.objects.create(
+            name='Campaña Uva 2026',
+            code='CAMP-UVA',
+            product=self.prod_uva,
+            tenant=self.tenant1,
+            status='active'
+        )
+
     def test_create_report_assigns_tenant_and_created_by(self):
         self.client.force_authenticate(user=self.user_ica)
         payload = {
@@ -348,4 +358,75 @@ class ReportTenantAndFilterTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         rep = Report.objects.get(id='REP-CARGA-ONLY')
         self.assertEqual(rep.lote, 'CRG-EXCLUSIVA-99')
+
+    def test_create_report_fails_without_active_campaign(self):
+        self.client.force_authenticate(user=self.user_ica)
+        # Try creating report for 'Palta', which has no active campaign in tenant1
+        payload = {
+            'id': 'REP-PALTA-FAIL',
+            'datosGenerales': {
+                'producto': 'Palta',
+                'carga': 'CRG-FAIL-01',
+            },
+            'registros': [{'jabas': 10, 'pesoBruto': 150.0, 'pesoParihuela': 20.0, 'pesoJaba': 1.5, 'tara': 35.0, 'pesoNeto': 115.0}],
+            'totales': {'totalPesoBruto': '150.0', 'totalPesoNeto': '115.0', 'totalJabas': 10}
+        }
+        res = self.client.post('/reports/', data=payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("No existe una campaña activa", str(res.data))
+
+    def test_campaign_consolidated_report_and_close_and_purge(self):
+        from inventory.models import Campaign
+        # Create a report under camp_uva
+        self.client.force_authenticate(user=self.user_ica)
+        payload = {
+            'id': 'REP-CAMP-TEST-1',
+            'datosGenerales': {
+                'producto': 'Uva',
+                'variedad': 'Red Globe',
+                'productor': 'Don Ricardo',
+                'carga': 'CRG-CAMP-1',
+            },
+            'registros': [{'jabas': 20, 'pesoBruto': 300.0, 'pesoParihuela': 20.0, 'pesoJaba': 1.5, 'tara': 50.0, 'pesoNeto': 250.0}],
+            'totales': {'totalPesoBruto': '300.0', 'totalPesoNeto': '250.0', 'totalJabas': 20}
+        }
+        res_create = self.client.post('/reports/', data=payload, format='json')
+        self.assertEqual(res_create.status_code, status.HTTP_201_CREATED)
+
+        # 1. Consolidated report
+        res_summary = self.client.get(f'/inventory/campaigns/{self.camp_uva.id}/consolidated_report/')
+        self.assertEqual(res_summary.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_summary.data['total_kilos_netos'], 250.0)
+        self.assertEqual(res_summary.data['total_jabas'], 20)
+        self.assertEqual(res_summary.data['producers_breakdown'][0]['productor'], 'Don Ricardo')
+        self.assertEqual(res_summary.data['varieties_breakdown'][0]['variedad'], 'Red Globe')
+
+        # 2. Operator attempt to close gets 403 Forbidden
+        res_op_close = self.client.post(f'/inventory/campaigns/{self.camp_uva.id}/close_campaign/')
+        self.assertEqual(res_op_close.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 3. Authenticate as plant admin
+        admin_ica = User.objects.create_user(
+            email='admin_ica@agro.com',
+            password='password123',
+            role='admin',
+            tenant=self.tenant1
+        )
+        self.client.force_authenticate(user=admin_ica)
+
+        # Admin close campaign
+        res_close = self.client.post(f'/inventory/campaigns/{self.camp_uva.id}/close_campaign/')
+        self.assertEqual(res_close.status_code, status.HTTP_200_OK)
+        self.camp_uva.refresh_from_db()
+        self.assertEqual(self.camp_uva.status, 'closed')
+        self.assertIsNotNone(self.camp_uva.closed_summary)
+        self.assertEqual(self.camp_uva.closed_summary['total_kilos_netos'], 250.0)
+
+        # 4. Admin purge reports
+        res_purge = self.client.post(f'/inventory/campaigns/{self.camp_uva.id}/purge_reports/')
+        self.assertEqual(res_purge.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_purge.data['deleted_count'], 1)
+        self.assertEqual(self.camp_uva.reports.count(), 0)
+        # Snapshot still preserved
+        self.assertEqual(self.camp_uva.closed_summary['total_kilos_netos'], 250.0)
 

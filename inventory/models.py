@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 class Product(models.Model):
@@ -103,6 +104,80 @@ class ProductVariety(models.Model):
 
     def __str__(self):
         return f"{self.product.name} - {self.name}"
+
+
+class Campaign(models.Model):
+    """Agricultural Campaign (Campaña de Producto por Sede)"""
+    STATUS_ACTIVE = 'active'
+    STATUS_CLOSED = 'closed'
+    STATUS_CHOICES = [
+        (STATUS_ACTIVE, 'Activa'),
+        (STATUS_CLOSED, 'Cerrada'),
+    ]
+
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='campaigns',
+        verbose_name="Sede"
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='campaigns',
+        verbose_name="Producto"
+    )
+    name = models.CharField(max_length=150, verbose_name="Nombre de la Campaña")
+    code = models.CharField(max_length=50, blank=True, null=True, verbose_name="Código de Campaña")
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_ACTIVE,
+        db_index=True,
+        verbose_name="Estado"
+    )
+    start_date = models.DateField(default=timezone.now, verbose_name="Fecha de Inicio")
+    end_date = models.DateField(null=True, blank=True, verbose_name="Fecha de Cierre")
+    closed_at = models.DateTimeField(null=True, blank=True, verbose_name="Fecha/Hora de Cierre")
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='closed_campaigns',
+        verbose_name="Cerrado por"
+    )
+    closed_summary = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name="Resumen Consolidado de Cierre"
+    )
+    observations = models.TextField(blank=True, null=True, verbose_name="Observaciones")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_campaigns',
+        verbose_name="Creado por"
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Campaña"
+        verbose_name_plural = "Campañas"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'product'],
+                condition=models.Q(status='active'),
+                name='unique_active_campaign_per_product_tenant'
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.product.name} - {self.name} ({self.get_status_display()})"
 
 
 class Warehouse(models.Model):

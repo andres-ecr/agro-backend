@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Product, ProductVariety, Warehouse, InventoryItem, InventoryMovement
+from django.db.models import Sum
+from .models import Product, ProductVariety, Warehouse, InventoryItem, InventoryMovement, Campaign
 
 
 class ProductVarietySerializer(serializers.ModelSerializer):
@@ -24,15 +25,28 @@ class ProductSerializer(serializers.ModelSerializer):
     unit_display = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     varieties = ProductVarietySerializer(many=True, required=False)
+    active_campaign = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
         fields = (
             'id', 'tenant', 'tenant_name', 'name', 'code', 'description', 'product_type', 'product_type_display',
-            'unit', 'unit_display', 'cost', 'price', 'varieties',
+            'unit', 'unit_display', 'cost', 'price', 'varieties', 'active_campaign',
             'created_at', 'updated_at', 'created_by', 'created_by_name'
         )
-        read_only_fields = ('id', 'created_at', 'updated_at', 'created_by', 'created_by_name', 'product_type_display', 'unit_display', 'tenant_name')
+        read_only_fields = ('id', 'created_at', 'updated_at', 'created_by', 'created_by_name', 'product_type_display', 'unit_display', 'tenant_name', 'active_campaign')
+
+    def get_active_campaign(self, obj):
+        active = obj.campaigns.filter(status='active').first()
+        if active:
+            return {
+                'id': active.id,
+                'name': active.name,
+                'code': active.code,
+                'status': active.status,
+                'start_date': str(active.start_date),
+            }
+        return None
 
     def to_internal_value(self, data):
         if 'varieties' in data and isinstance(data['varieties'], list):
@@ -170,6 +184,89 @@ class ProductSerializer(serializers.ModelSerializer):
             instance.varieties.exclude(id__in=kept_ids).delete()
 
         return instance
+
+
+class CampaignSerializer(serializers.ModelSerializer):
+    """Serializer for agricultural campaigns"""
+    product_name = serializers.ReadOnlyField(source='product.name')
+    tenant_name = serializers.ReadOnlyField(source='tenant.name')
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    closed_by_name = serializers.SerializerMethodField()
+    
+    total_kilos = serializers.SerializerMethodField()
+    total_jabas = serializers.SerializerMethodField()
+    total_cargas = serializers.SerializerMethodField()
+    reports_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Campaign
+        fields = (
+            'id', 'tenant', 'tenant_name', 'product', 'product_name',
+            'name', 'code', 'status', 'status_display',
+            'start_date', 'end_date', 'closed_at', 'closed_by', 'closed_by_name',
+            'closed_summary', 'observations',
+            'total_kilos', 'total_jabas', 'total_cargas', 'reports_count',
+            'created_at', 'updated_at', 'created_by', 'created_by_name'
+        )
+        read_only_fields = (
+            'id', 'status_display', 'closed_at', 'closed_by', 'closed_by_name',
+            'closed_summary', 'tenant_name', 'product_name',
+            'total_kilos', 'total_jabas', 'total_cargas', 'reports_count',
+            'created_at', 'updated_at', 'created_by', 'created_by_name'
+        )
+
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.email
+        return None
+
+    def get_closed_by_name(self, obj):
+        if obj.closed_by:
+            return obj.closed_by.get_full_name() or obj.closed_by.email
+        return None
+
+    def get_total_kilos(self, obj):
+        if obj.status == 'closed' and obj.closed_summary:
+            return obj.closed_summary.get('total_kilos_netos', 0.0)
+        val = obj.reports.aggregate(total=Sum('totalPesoNeto'))['total']
+        return float(val or 0.0)
+
+    def get_total_jabas(self, obj):
+        if obj.status == 'closed' and obj.closed_summary:
+            return obj.closed_summary.get('total_jabas', 0)
+        val = obj.reports.aggregate(total=Sum('totalJabas'))['total']
+        return int(val or 0)
+
+    def get_total_cargas(self, obj):
+        if obj.status == 'closed' and obj.closed_summary:
+            return obj.closed_summary.get('total_cargas', 0)
+        return obj.reports.count()
+
+    def get_reports_count(self, obj):
+        return obj.reports.count()
+
+    def validate(self, attrs):
+        product = attrs.get('product') or (self.instance.product if self.instance else None)
+        tenant = attrs.get('tenant') or (self.instance.tenant if self.instance else None)
+        status_val = attrs.get('status', 'active')
+
+        request = self.context.get('request')
+        if not tenant and request:
+            user = request.user
+            if getattr(user, 'role', None) != 'superadmin' and not user.is_superuser:
+                tenant = getattr(user, 'tenant', None)
+                attrs['tenant'] = tenant
+
+        if status_val == 'active' and product and tenant:
+            qs = Campaign.objects.filter(tenant=tenant, product=product, status='active')
+            if self.instance:
+                qs = qs.exclude(id=self.instance.id)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    f"Ya existe una campaña activa para el producto '{product.name}' en esta sede ({qs.first().name}). Debe cerrar la campaña actual antes de iniciar una nueva."
+                )
+        return attrs
 
 
 class WarehouseSerializer(serializers.ModelSerializer):

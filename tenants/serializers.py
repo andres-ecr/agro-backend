@@ -9,7 +9,7 @@ class TenantSummarySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Tenant
-        fields = ('id', 'name', 'code', 'ruc', 'address', 'logo_url', 'users_count', 'is_active')
+        fields = ('id', 'name', 'code', 'ruc', 'address', 'logo_url', 'show_units', 'users_count', 'is_active')
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -38,6 +38,6 @@ class TenantSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'organization', 'organization_name', 'name', 'code', 'ruc',
             'address', 'logo', 'logo_url', 'effective_logo_url', 'allowed_roles',
-            'users_count', 'is_active', 'created_at', 'updated_at'
+            'show_units', 'users_count', 'is_active', 'created_at', 'updated_at'
         )
         read_only_fields = ('id', 'organization_name', 'effective_logo_url', 'users_count', 'created_at', 'updated_at')

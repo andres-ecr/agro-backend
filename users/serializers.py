@@ -89,6 +89,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 'id': obj.tenant.id,
                 'code': obj.tenant.code,
                 'name': obj.tenant.name,
+                'show_units': getattr(obj.tenant, 'show_units', False),
             }
         return None
 
@@ -118,6 +119,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'id': user.tenant.id,
                 'code': user.tenant.code,
                 'name': user.tenant.name,
+                'show_units': getattr(user.tenant, 'show_units', False),
                 'logo_url': user.tenant.get_logo_url(),
             }
 

@@ -64,10 +64,13 @@ def seed_production():
             'ruc': '20601234567',
             'address': 'Panamericana Sur Km 300, Subtanjalla, Ica',
             'allowed_roles': ['admin', 'operator', 'supervisor'],
+            'show_units': False,
             'is_active': True,
         }
     )
-    print(f"[OK] Sede: {ica.name} ({ica.code}) -> Org: {org.name}")
+    ica.show_units = False
+    ica.save()
+    print(f"[OK] Sede: {ica.name} ({ica.code}) [show_units={ica.show_units}] -> Org: {org.name}")
 
     casma, _ = Tenant.objects.update_or_create(
         code='casma',
@@ -77,10 +80,13 @@ def seed_production():
             'ruc': '20601234568',
             'address': 'Valle de Casma Km 375, Casma, Áncash',
             'allowed_roles': ['admin', 'operator', 'supervisor'],
+            'show_units': False,
             'is_active': True,
         }
     )
-    print(f"[OK] Sede: {casma.name} ({casma.code}) -> Org: {org.name}")
+    casma.show_units = False
+    casma.save()
+    print(f"[OK] Sede: {casma.name} ({casma.code}) [show_units={casma.show_units}] -> Org: {org.name}")
 
     # 3. PRODUCTS & VARIETIES (Ready for scale operator)
     # -------------------------------------------------------------

@@ -200,7 +200,7 @@ class ReportViewSet(viewsets.ModelViewSet):
 
         is_filtered = bool(active_filters)
 
-        today = timezone.now().date()
+        today = timezone.localdate()
         today_qs = queryset.filter(created_at__date=today)
 
         today_stats = today_qs.aggregate(

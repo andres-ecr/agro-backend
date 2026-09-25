@@ -49,6 +49,11 @@ class Tenant(models.Model):
         help_text="List of allowed roles for this tenant, e.g. ['admin', 'operator']"
     )
     is_active = models.BooleanField(default=True, verbose_name="Activo")
+    show_units = models.BooleanField(
+        default=False,
+        verbose_name="Mostrar Unidades",
+        help_text="Si está activo, muestra columnas, filtros y sufijos de unidades de medida (kg, etc.)."
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Fecha de actualización")
 

@@ -25,8 +25,8 @@ class ProducerCLPTests(TestCase):
             'name': 'Fundo San Jose',
             'clp': 'CLP-PRINCIPAL',
             'clp_list': [
-                {'code': 'CLP-001', 'lugar_produccion': 'Lote Norte'},
-                {'code': 'CLP-002', 'lugar_produccion': 'Lote Sur'},
+                {'code': 'CLP-001', 'lugar_produccion': 'Lote Norte', 'distrito': 'Los Aquijes'},
+                {'code': 'CLP-002', 'lugar_produccion': 'Lote Sur', 'distrito': 'Santiago'},
             ]
         }
         response = self.client.post('/producers/', data=payload, format='json')
@@ -36,22 +36,22 @@ class ProducerCLPTests(TestCase):
 
         producer = Producer.objects.first()
         self.assertEqual(producer.clp_list.count(), 2)
-        codes = list(producer.clp_list.values_list('code', flat=True))
-        self.assertIn('CLP-001', codes)
-        self.assertIn('CLP-002', codes)
+        clp1 = producer.clp_list.get(code='CLP-001')
+        self.assertEqual(clp1.lugar_produccion, 'Lote Norte')
+        self.assertEqual(clp1.distrito, 'Los Aquijes')
 
     def test_update_producer_clp_list(self):
         producer = Producer.objects.create(code='PROD-002', name='Agricola Verde')
-        clp1 = ProducerCLP.objects.create(producer=producer, code='CLP-A', lugar_produccion='Sector 1')
-        clp2 = ProducerCLP.objects.create(producer=producer, code='CLP-B', lugar_produccion='Sector 2')
+        clp1 = ProducerCLP.objects.create(producer=producer, code='CLP-A', lugar_produccion='Sector 1', distrito='Ica')
+        clp2 = ProducerCLP.objects.create(producer=producer, code='CLP-B', lugar_produccion='Sector 2', distrito='Parcona')
 
-        # Update: keep CLP-A (update name), remove CLP-B, add CLP-C
+        # Update: keep CLP-A (update name and distrito), remove CLP-B, add CLP-C
         payload = {
             'code': 'PROD-002',
             'name': 'Agricola Verde SAC',
             'clp_list': [
-                {'id': clp1.id, 'code': 'CLP-A-MOD', 'lugar_produccion': 'Sector 1 Modificado'},
-                {'code': 'CLP-C', 'lugar_produccion': 'Sector Nuevo'},
+                {'id': clp1.id, 'code': 'CLP-A-MOD', 'lugar_produccion': 'Sector 1 Modificado', 'distrito': 'Subtanjalla'},
+                {'code': 'CLP-C', 'lugar_produccion': 'Sector Nuevo', 'distrito': 'La Tinguiña'},
             ]
         }
         response = self.client.put(f'/producers/{producer.id}/', data=payload, format='json')
@@ -60,14 +60,14 @@ class ProducerCLPTests(TestCase):
         producer.refresh_from_db()
         self.assertEqual(producer.name, 'Agricola Verde SAC')
         self.assertEqual(producer.clp_list.count(), 2)
-        codes = list(producer.clp_list.values_list('code', flat=True))
-        self.assertIn('CLP-A-MOD', codes)
-        self.assertIn('CLP-C', codes)
-        self.assertNotIn('CLP-B', codes)
+        clp_a_mod = producer.clp_list.get(code='CLP-A-MOD')
+        self.assertEqual(clp_a_mod.distrito, 'Subtanjalla')
+        clp_c = producer.clp_list.get(code='CLP-C')
+        self.assertEqual(clp_c.distrito, 'La Tinguiña')
 
     def test_list_producers_includes_clp_list(self):
         producer = Producer.objects.create(code='PROD-003', name='Valle Hermoso')
-        ProducerCLP.objects.create(producer=producer, code='CLP-VH1')
+        ProducerCLP.objects.create(producer=producer, code='CLP-VH1', lugar_produccion='Fundo 1', distrito='Pachacutec')
 
         response = self.client.get('/producers/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -76,3 +76,4 @@ class ProducerCLPTests(TestCase):
         self.assertIn('clp_list', item)
         self.assertEqual(len(item['clp_list']), 1)
         self.assertEqual(item['clp_list'][0]['code'], 'CLP-VH1')
+        self.assertEqual(item['clp_list'][0]['distrito'], 'Pachacutec')

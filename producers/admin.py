@@ -16,6 +16,6 @@ class ProducerAdmin(admin.ModelAdmin):
 
 @admin.register(ProducerCLP)
 class ProducerCLPAdmin(admin.ModelAdmin):
-    list_display = ('id', 'code', 'producer', 'lugar_produccion', 'is_active', 'created_at')
+    list_display = ('id', 'code', 'producer', 'lugar_produccion', 'distrito', 'is_active', 'created_at')
     list_filter = ('is_active',)
-    search_fields = ('code', 'lugar_produccion', 'producer__name')
+    search_fields = ('code', 'lugar_produccion', 'distrito', 'producer__name')

@@ -51,6 +51,7 @@ class ProducerCLP(models.Model):
     )
     code = models.CharField(max_length=100, verbose_name="Código CLP")
     lugar_produccion = models.CharField(max_length=200, blank=True, null=True, verbose_name="Lugar de Producción")
+    distrito = models.CharField(max_length=100, blank=True, null=True, verbose_name="Distrito")
     is_active = models.BooleanField(default=True, verbose_name="Activo")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Fecha de actualización")

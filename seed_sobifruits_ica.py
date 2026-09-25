@@ -138,8 +138,8 @@ def seed_sobifruits_ica():
             'ruc': '20452367891',
             'address': 'Sector La Venta S/N, Santiago, Ica',
             'clps': [
-                {'code': 'CLP-ICA-001', 'lugar_produccion': 'Sector La Venta'},
-                {'code': 'CLP-ICA-002', 'lugar_produccion': 'Fundo Santa Rita'},
+                {'code': 'CLP-ICA-001', 'lugar_produccion': 'Sector La Venta', 'distrito': 'Santiago'},
+                {'code': 'CLP-ICA-002', 'lugar_produccion': 'Fundo Santa Rita', 'distrito': 'Los Aquijes'},
             ]
         },
         {
@@ -148,7 +148,7 @@ def seed_sobifruits_ica():
             'ruc': '20512893456',
             'address': 'Carretera Villacurí Km 285, Salas Guadalupe, Ica',
             'clps': [
-                {'code': 'CLP-ICA-003', 'lugar_produccion': 'Sector Villacurí'},
+                {'code': 'CLP-ICA-003', 'lugar_produccion': 'Sector Villacurí', 'distrito': 'Salas Guadalupe'},
             ]
         },
         {
@@ -157,7 +157,7 @@ def seed_sobifruits_ica():
             'ruc': '20398456123',
             'address': 'Valle de Santiago Parcela 42, Santiago, Ica',
             'clps': [
-                {'code': 'CLP-ICA-004', 'lugar_produccion': 'Sector Santiago'},
+                {'code': 'CLP-ICA-004', 'lugar_produccion': 'Sector Santiago', 'distrito': 'Santiago'},
             ]
         },
         {
@@ -166,7 +166,7 @@ def seed_sobifruits_ica():
             'ruc': '20603456789',
             'address': 'Av. Los Maestros 520, La Tinguiña, Ica',
             'clps': [
-                {'code': 'CLP-ICA-005', 'lugar_produccion': 'Sector Tinguiña'},
+                {'code': 'CLP-ICA-005', 'lugar_produccion': 'Sector Tinguiña', 'distrito': 'La Tinguiña'},
             ]
         },
     ]
@@ -188,6 +188,7 @@ def seed_sobifruits_ica():
                 code=clp_info['code'],
                 defaults={
                     'lugar_produccion': clp_info['lugar_produccion'],
+                    'distrito': clp_info.get('distrito', ''),
                     'is_active': True,
                 }
             )

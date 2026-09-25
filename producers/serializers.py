@@ -8,7 +8,7 @@ class ProducerCLPSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProducerCLP
-        fields = ('id', 'producer', 'code', 'lugar_produccion', 'is_active', 'created_at', 'updated_at')
+        fields = ('id', 'producer', 'code', 'lugar_produccion', 'distrito', 'is_active', 'created_at', 'updated_at')
         read_only_fields = ('producer', 'created_at', 'updated_at')
 
 

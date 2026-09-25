@@ -1,8 +1,17 @@
 # reports/serializers.py
 from rest_framework import serializers
-from .models import Report
+from .models import Report, Responsable
 import json
 from decimal import Decimal
+
+
+class ResponsableSerializer(serializers.ModelSerializer):
+    full_name = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Responsable
+        fields = ('id', 'first_name', 'last_name', 'full_name', 'is_active', 'created_at')
+        read_only_fields = ('id', 'full_name', 'created_at')
 
 class ReportSerializer(serializers.ModelSerializer):
     registros = serializers.JSONField(required=False)

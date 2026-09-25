@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
 from django_filters import rest_framework as django_filters
-from .models import Report
-from .serializers import ReportSerializer, ReportListSerializer
+from .models import Report, Responsable
+from .serializers import ReportSerializer, ReportListSerializer, ResponsableSerializer
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 import json
@@ -305,3 +305,42 @@ class ReportViewSet(viewsets.ModelViewSet):
             return Response(self.get_serializer(report).data)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ResponsableViewSet(viewsets.ModelViewSet):
+    """CRUD ViewSet para Responsables de recepción (operarios que comparten PC)"""
+    queryset = Responsable.objects.all()
+    serializer_class = ResponsableSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return queryset.none()
+
+        if getattr(user, 'role', None) == 'superadmin' or user.is_superuser:
+            tenant_id = self.request.headers.get('X-Tenant-ID') or self.request.query_params.get('tenant')
+            if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                try:
+                    queryset = queryset.filter(tenant_id=int(tenant_id))
+                except (ValueError, TypeError):
+                    queryset = queryset.filter(tenant_id=tenant_id)
+            return queryset.filter(is_active=True)
+
+        return queryset.filter(tenant=user.tenant, is_active=True)
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role == 'superadmin' or user.is_superuser:
+            tenant_id = self.request.headers.get('X-Tenant-ID') or self.request.query_params.get('tenant')
+            if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                try:
+                    tenant_id = int(tenant_id)
+                except (ValueError, TypeError):
+                    pass
+                serializer.save(tenant_id=tenant_id)
+                return
+        serializer.save(tenant=user.tenant)
+

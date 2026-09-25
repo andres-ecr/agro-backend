@@ -51,3 +51,33 @@ class ReportAttachment(models.Model):
     
     def __str__(self):
         return f"Attachment for {self.report.report_id}: {self.file_name}"
+
+
+class Responsable(models.Model):
+    """Modelo para operarios/responsables de recepción para empresas que comparten cuenta en una sola PC"""
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='responsables',
+        null=True,
+        blank=True,
+        verbose_name="Sede / Tenant"
+    )
+    first_name = models.CharField(max_length=100, verbose_name="Nombre")
+    last_name = models.CharField(max_length=100, verbose_name="Apellido")
+    is_active = models.BooleanField(default=True, verbose_name="Activo")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Fecha de actualización")
+
+    class Meta:
+        ordering = ['first_name', 'last_name']
+        verbose_name = "Responsable"
+        verbose_name_plural = "Responsables"
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}".strip()
+
+    def __str__(self):
+        return self.full_name
+

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.db.models import Sum
+from tenants.models import Tenant
 from .models import Product, ProductVariety, Warehouse, InventoryItem, InventoryMovement, Campaign
 
 
@@ -188,6 +189,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
 class CampaignSerializer(serializers.ModelSerializer):
     """Serializer for agricultural campaigns"""
+    tenant = serializers.PrimaryKeyRelatedField(queryset=Tenant.objects.all(), required=False)
     product_name = serializers.ReadOnlyField(source='product.name')
     tenant_name = serializers.ReadOnlyField(source='tenant.name')
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -215,6 +217,36 @@ class CampaignSerializer(serializers.ModelSerializer):
             'total_kilos', 'total_jabas', 'total_cargas', 'reports_count',
             'created_at', 'updated_at', 'created_by', 'created_by_name'
         )
+
+    def to_internal_value(self, data):
+        if hasattr(data, '_mutable') and not data._mutable:
+            data = data.copy()
+        elif isinstance(data, dict):
+            data = dict(data)
+
+        if not data.get('tenant'):
+            prod_val = data.get('product')
+            if prod_val:
+                try:
+                    prod = Product.objects.filter(id=prod_val).first() if isinstance(prod_val, (int, str)) and str(prod_val).isdigit() else None
+                    if prod and prod.tenant_id:
+                        data['tenant'] = prod.tenant_id
+                except Exception:
+                    pass
+
+            if not data.get('tenant'):
+                request = self.context.get('request')
+                if request:
+                    user = getattr(request, 'user', None)
+                    if user:
+                        if getattr(user, 'tenant_id', None):
+                            data['tenant'] = user.tenant_id
+                        elif getattr(user, 'role', None) == 'superadmin' or getattr(user, 'is_superuser', False):
+                            tenant_id = request.headers.get('X-Tenant-ID') or request.query_params.get('tenant')
+                            if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                                data['tenant'] = tenant_id
+
+        return super().to_internal_value(data)
 
     def get_created_by_name(self, obj):
         if obj.created_by:
@@ -252,11 +284,32 @@ class CampaignSerializer(serializers.ModelSerializer):
         status_val = attrs.get('status', 'active')
 
         request = self.context.get('request')
-        if not tenant and request:
-            user = request.user
-            if getattr(user, 'role', None) != 'superadmin' and not user.is_superuser:
-                tenant = getattr(user, 'tenant', None)
+        if not tenant:
+            if product and getattr(product, 'tenant', None):
+                tenant = product.tenant
                 attrs['tenant'] = tenant
+            elif request:
+                user = request.user
+                if getattr(user, 'tenant', None):
+                    tenant = user.tenant
+                    attrs['tenant'] = tenant
+                elif getattr(user, 'role', None) == 'superadmin' or user.is_superuser:
+                    tenant_id = request.headers.get('X-Tenant-ID') or request.query_params.get('tenant')
+                    if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
+                        try:
+                            tenant = Tenant.objects.filter(id=int(tenant_id)).first()
+                            if tenant:
+                                attrs['tenant'] = tenant
+                        except (ValueError, TypeError):
+                            pass
+                    if not tenant and getattr(user, 'tenant', None):
+                        tenant = user.tenant
+                        attrs['tenant'] = tenant
+
+        if not tenant:
+            raise serializers.ValidationError({
+                'tenant': 'Debe especificar o tener asignada una sede para la campaña.'
+            })
 
         if status_val == 'active' and product and tenant:
             qs = Campaign.objects.filter(tenant=tenant, product=product, status='active')

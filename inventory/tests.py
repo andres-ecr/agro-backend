@@ -191,3 +191,18 @@ class TenantScopedProductTests(TestCase):
         response = client.post('/inventory/products/', data=data, format='json')
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['tenant'], self.tenant_casma.id)
+
+    def test_create_campaign_without_explicit_tenant(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user_ica)
+        data = {
+            'product': self.prod_ica.id,
+            'name': 'Campaña Uva 2026',
+            'code': 'CAMP-UVA-2026',
+            'start_date': '2026-01-01',
+            'status': 'active',
+        }
+        response = client.post('/inventory/campaigns/', data=data, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['tenant'], self.tenant_ica.id)
+        self.assertEqual(response.data['name'], 'Campaña Uva 2026')

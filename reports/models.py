@@ -34,8 +34,8 @@ class Report(models.Model):
     totales_json = models.TextField(null=True, blank=True)
     
     # Campos para totales (para facilitar búsquedas y filtros)
-    totalPesoBruto = models.DecimalField(max_digits=10, decimal_places=1, null=True, blank=True)
-    totalPesoNeto = models.DecimalField(max_digits=10, decimal_places=1, null=True, blank=True)
+    totalPesoBruto = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    totalPesoNeto = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     totalJabas = models.IntegerField(null=True, blank=True)
     
     class Meta:

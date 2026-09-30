@@ -329,8 +329,11 @@ class CampaignViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
         tenant = serializer.validated_data.get('tenant')
+        product = serializer.validated_data.get('product')
         if not tenant:
-            if getattr(user, 'role', None) == 'superadmin' or user.is_superuser:
+            if product and getattr(product, 'tenant', None):
+                tenant = product.tenant
+            elif getattr(user, 'role', None) == 'superadmin' or user.is_superuser:
                 tenant_id = self.request.headers.get('X-Tenant-ID') or self.request.query_params.get('tenant')
                 if tenant_id and str(tenant_id).lower() not in ('all', 'undefined', 'null', ''):
                     try:

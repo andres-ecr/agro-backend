@@ -10,6 +10,134 @@ from reports.models import Report
 User = get_user_model()
 
 
+class ReportEditingTests(TestCase):
+    def setUp(self):
+        from inventory.models import Product, Campaign
+        self.client = APIClient()
+        self.tenant = Tenant.objects.create(name='Edit Site', code='EDIT')
+        self.other = Tenant.objects.create(name='Other Site', code='OTHER')
+        self.admin = User.objects.create_user(email='edit@agro.com', password='password123', role='admin', tenant=self.tenant)
+        self.operator = User.objects.create_user(email='opedit@agro.com', password='password123', role='operator', tenant=self.tenant)
+        product = Product.objects.create(name='Uva', code='EDIT-UVA', tenant=self.tenant)
+        self.campaign = Campaign.objects.create(name='Edit Campaign', code='EDIT-C', product=product, tenant=self.tenant, status='active')
+        self.report = Report.objects.create(id='EDIT-1', tenant=self.tenant, campaign=self.campaign, created_by=self.operator, producto='Uva', lote='OLD', datosGenerales_json=json.dumps({'producto': 'Uva', 'carga': 'OLD', 'legacyField': 'keep'}), registros_json='[]', totales_json='{}')
+        self.payload = {'datosGenerales': {'producto': 'Uva', 'carga': 'NEW', 'productorCode': '001', 'fechaRecepcion': '2026-09-16'}, 'registros': [{'id': 'ROW-1', 'pesoBruto': '100.10', 'pesoParihuela': '10', 'tara': '5', 'pesoJaba': '0.5', 'jabas': 10}], 'totales': {'totalPesoNeto': 999}, 'status': 'verified'}
+
+    def test_admin_update_persists_json_and_authoritative_totals(self):
+        self.payload['expectedRevision'] = self.report.updated_at.isoformat()
+        self.client.force_authenticate(self.admin)
+        response = self.client.put('/reports/EDIT-1/', self.payload, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.report.refresh_from_db()
+        self.assertEqual(self.report.lote, 'NEW')
+        self.assertEqual(self.report.totalPesoNeto, Decimal('85.10'))
+        self.assertEqual(self.report.totalJabas, 10)
+        general = json.loads(self.report.datosGenerales_json)
+        self.assertEqual(general['productorCode'], '001')
+        self.assertEqual(general['legacyField'], 'keep')
+        self.assertEqual(json.loads(self.report.registros_json)[0]['pesoNeto'], '85.10')
+        self.assertEqual(self.report.created_by, self.operator)
+        self.assertEqual(self.client.get('/reports/EDIT-1/').data['datosGenerales']['carga'], 'NEW')
+
+    def test_update_permission_and_tenant_boundary(self):
+        self.payload['expectedRevision'] = self.report.updated_at.isoformat()
+        for role in ('operator', 'supervisor'):
+            self.operator.role = role
+            self.operator.save()
+            self.client.force_authenticate(self.operator)
+            self.assertEqual(self.client.patch('/reports/EDIT-1/', self.payload, format='json').status_code, 403)
+        self.admin.tenant = self.other
+        self.admin.save()
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.put('/reports/EDIT-1/', self.payload, format='json').status_code, 404)
+        self.admin.role = 'superadmin'
+        self.admin.save()
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.put('/reports/EDIT-1/', self.payload, format='json').status_code, 200)
+
+    def test_invalid_values_and_immutable_fields_leave_report_unchanged(self):
+        self.payload['expectedRevision'] = self.report.updated_at.isoformat()
+        self.client.force_authenticate(self.admin)
+        for change in ({'id': 'CHANGED'}, {'tenant': self.other.id}, {'created_by': self.admin.id}, {'campaign': self.campaign.id}, {'status': 'invalid'}):
+            response = self.client.put('/reports/EDIT-1/', {**self.payload, **change}, format='json')
+            self.assertEqual(response.status_code, 400, response.data)
+        for field, value in [('pesoBruto', '-1'), ('jabas', 1.5), ('pesoParihuela', 'NaN'), ('tara', '200')]:
+            record = {**self.payload['registros'][0], field: value}
+            self.assertEqual(self.client.put('/reports/EDIT-1/', {**self.payload, 'registros': [record]}, format='json').status_code, 400)
+        general = {**self.payload['datosGenerales'], 'fechaRecepcion': '2026-02-30'}
+        self.assertEqual(self.client.put('/reports/EDIT-1/', {**self.payload, 'datosGenerales': general}, format='json').status_code, 400)
+        self.report.refresh_from_db()
+        self.assertEqual(self.report.lote, 'OLD')
+
+    def test_product_change_requires_matching_campaign_and_rows_can_be_removed(self):
+        self.payload['expectedRevision'] = self.report.updated_at.isoformat()
+        self.client.force_authenticate(self.admin)
+        general = {**self.payload['datosGenerales'], 'producto': 'Unknown'}
+        self.assertEqual(self.client.put('/reports/EDIT-1/', {**self.payload, 'datosGenerales': general}, format='json').status_code, 400)
+        response = self.client.put('/reports/EDIT-1/', {**self.payload, 'registros': []}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.report.refresh_from_db()
+        self.assertEqual(self.report.totalPesoNeto, 0)
+
+    def test_legacy_calendar_dates_and_numeric_record_ids_are_editable(self):
+        general = {'producto': 'Uva', 'carga': 'OLD', 'fechaRecepcion': '19/09/2026', 'fechaCosecha': '29/02/2024'}
+        self.report.datosGenerales_json = json.dumps(general)
+        self.report.registros_json = json.dumps([{**self.payload['registros'][0], 'id': 1}])
+        self.report.save()
+        self.client.force_authenticate(self.admin)
+        revision = self.client.get('/reports/EDIT-1/').data.get('revision', self.report.updated_at.isoformat())
+        response = self.client.patch('/reports/EDIT-1/', {'status': 'verified', 'expectedRevision': revision}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.report.refresh_from_db()
+        self.assertEqual(json.loads(self.report.datosGenerales_json)['fechaRecepcion'], '2026-09-19')
+        self.assertEqual(json.loads(self.report.datosGenerales_json)['fechaCosecha'], '2024-02-29')
+        self.assertEqual(json.loads(self.report.registros_json)[0]['id'], 1)
+        for invalid in ('29/02/2023', '31/04/2026'):
+            response = self.client.patch('/reports/EDIT-1/', {'datosGenerales': {'fechaCosecha': invalid}, 'expectedRevision': self.report.updated_at.isoformat()}, format='json')
+            self.assertEqual(response.status_code, 400, response.data)
+
+    def test_numeric_record_id_is_preserved_and_invalid_duplicates_are_rejected(self):
+        self.client.force_authenticate(self.admin)
+        revision = self.report.updated_at.isoformat()
+        row = {**self.payload['registros'][0], 'id': 1}
+        response = self.client.put('/reports/EDIT-1/', {**self.payload, 'expectedRevision': revision, 'registros': [row]}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.report.refresh_from_db()
+        self.assertEqual(json.loads(self.report.registros_json)[0]['id'], 1)
+        for rows in ([row, row], [row, {**row, 'id': '1'}], [{**row, 'id': True}], [{**row, 'id': 1.5}], [{**row, 'id': ''}]):
+            self.assertEqual(self.client.put('/reports/EDIT-1/', {**self.payload, 'expectedRevision': self.report.updated_at.isoformat(), 'registros': rows}, format='json').status_code, 400)
+
+    def test_stale_admin_revision_does_not_overwrite_saved_weights(self):
+        self.client.force_authenticate(self.admin)
+        original = self.client.get('/reports/EDIT-1/').data
+        revision = original.get('revision', self.report.updated_at.isoformat())
+        first = {**self.payload, 'expectedRevision': revision, 'registros': [{**self.payload['registros'][0], 'pesoBruto': '200.10'}]}
+        self.assertEqual(self.client.put('/reports/EDIT-1/', first, format='json').status_code, 200)
+        second_admin = User.objects.create_user(email='secondedit@agro.com', password='password123', role='admin', tenant=self.tenant)
+        self.client.force_authenticate(second_admin)
+        stale = {**self.payload, 'expectedRevision': revision, 'datosGenerales': {**self.payload['datosGenerales'], 'observaciones': 'Stale admin observation'}}
+        response = self.client.put('/reports/EDIT-1/', stale, format='json')
+        self.assertEqual(response.status_code, 409, response.data)
+        self.report.refresh_from_db()
+        self.assertEqual(self.report.totalPesoNeto, Decimal('185.10'))
+        self.assertNotIn('observaciones', json.loads(self.report.datosGenerales_json))
+        self.assertEqual(self.client.patch('/reports/EDIT-1/', {'status': 'cancelled'}, format='json').status_code, 409)
+
+    def test_preloaded_serializer_rechecks_revision_inside_atomic_save(self):
+        from reports.serializers import ReportSerializer
+        from rest_framework.exceptions import APIException
+        revision = self.report.updated_at.isoformat()
+        stale = ReportSerializer(self.report, data={**self.payload, 'expectedRevision': revision})
+        stale.is_valid(raise_exception=True)
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.put('/reports/EDIT-1/', {**self.payload, 'expectedRevision': revision, 'registros': []}, format='json').status_code, 200)
+        with self.assertRaises(APIException) as conflict:
+            stale.save()
+        self.assertEqual(conflict.exception.status_code, 409)
+        self.report.refresh_from_db()
+        self.assertEqual(self.report.totalPesoNeto, 0)
+
+
 class ReportTenantAndFilterTests(TestCase):
     def setUp(self):
         self.client = APIClient()

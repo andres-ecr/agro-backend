@@ -39,8 +39,9 @@ build/
 *.egg
 *.zip
 
-# IDEs
+# IDEs and local tools
 .idea/
 .vscode/
 *.sublime-project
 *.sublime-workspace
+.codegraph/

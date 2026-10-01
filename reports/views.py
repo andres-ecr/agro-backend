@@ -6,7 +6,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django_filters import rest_framework as django_filters
 from .models import Report, Responsable
 from .serializers import ReportSerializer, ReportListSerializer, ResponsableSerializer
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, BasePermission
 from rest_framework.decorators import action
 import json
 from django.db.models import Sum, Avg, Count, Q
@@ -78,6 +78,17 @@ class StandardResultsSetPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 100
 
+class CanEditReport(BasePermission):
+    message = 'Solo los administradores pueden editar reportes.'
+
+    def has_permission(self, request, view):
+        if view.action not in ('update', 'partial_update'):
+            return True
+        return bool(request.user.is_authenticated and (
+            request.user.is_superuser or getattr(request.user, 'role', None) in ('admin', 'superadmin')
+        ))
+
+
 class ReportViewSet(viewsets.ModelViewSet):
     queryset = Report.objects.all()
     serializer_class = ReportSerializer
@@ -87,7 +98,7 @@ class ReportViewSet(viewsets.ModelViewSet):
     search_fields = ['producto', 'lote', 'datosGenerales_json']
     ordering_fields = ['created_at', 'producto', 'lote', 'totalPesoNeto']
     ordering = ['-created_at']
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanEditReport]
     
     def get_queryset(self):
         queryset = Report.objects.all()

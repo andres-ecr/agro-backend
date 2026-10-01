@@ -118,6 +118,9 @@ class ChangePasswordView(generics.UpdateAPIView):
     def get_object(self):
         return self.request.user
     
+    def post(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
     def update(self, request, *args, **kwargs):
         user = self.get_object()
         
@@ -129,9 +132,24 @@ class ChangePasswordView(generics.UpdateAPIView):
         
         return Response({"detail": "Password updated successfully."}, status=status.HTTP_200_OK)
 
+
 class MeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request):
         serializer = UserProfileSerializer(request.user)
         return Response(serializer.data)
+
+    def patch(self, request):
+        serializer = UserProfileSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request):
+        serializer = UserProfileSerializer(request.user, data=request.data, partial=False)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

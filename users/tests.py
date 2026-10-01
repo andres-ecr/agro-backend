@@ -148,3 +148,44 @@ class UserHierarchyAndRoleTests(TestCase):
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('role', response.data)
+
+    def test_me_view_get_and_patch(self):
+        self.client.force_authenticate(user=self.operator_ica)
+        
+        # Test GET /auth/me/
+        get_res = self.client.get('/auth/me/')
+        self.assertEqual(get_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(get_res.data['email'], 'op.ica@agro.com')
+        self.assertEqual(get_res.data['first_name'], 'Operator')
+
+        # Test PATCH /auth/me/
+        patch_res = self.client.patch('/auth/me/', {
+            'first_name': 'Operario Actualizado',
+            'last_name': 'Ica Modificado',
+        })
+        self.assertEqual(patch_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_res.data['first_name'], 'Operario Actualizado')
+        self.assertEqual(patch_res.data['last_name'], 'Ica Modificado')
+
+        # Verify persisted in database
+        self.operator_ica.refresh_from_db()
+        self.assertEqual(self.operator_ica.first_name, 'Operario Actualizado')
+        self.assertEqual(self.operator_ica.last_name, 'Ica Modificado')
+
+    def test_change_password_post(self):
+        self.client.force_authenticate(user=self.operator_ica)
+
+        # Test POST /auth/change-password/ with missing password
+        fail_res = self.client.post('/auth/change-password/', {})
+        self.assertEqual(fail_res.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Test POST /auth/change-password/ with valid password
+        success_res = self.client.post('/auth/change-password/', {
+            'password': 'NewSecurePassword456!',
+        })
+        self.assertEqual(success_res.status_code, status.HTTP_200_OK)
+
+        # Verify password check
+        self.operator_ica.refresh_from_db()
+        self.assertTrue(self.operator_ica.check_password('NewSecurePassword456!'))
+

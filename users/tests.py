@@ -175,12 +175,24 @@ class UserHierarchyAndRoleTests(TestCase):
     def test_change_password_post(self):
         self.client.force_authenticate(user=self.operator_ica)
 
-        # Test POST /auth/change-password/ with missing password
-        fail_res = self.client.post('/auth/change-password/', {})
+        # Test POST with missing current password
+        fail_res = self.client.post('/auth/change-password/', {
+            'password': 'NewSecurePassword456!',
+        })
         self.assertEqual(fail_res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('current_password', fail_res.data)
 
-        # Test POST /auth/change-password/ with valid password
+        # Test POST with incorrect current password
+        wrong_old_res = self.client.post('/auth/change-password/', {
+            'current_password': 'WrongPassword!',
+            'password': 'NewSecurePassword456!',
+        })
+        self.assertEqual(wrong_old_res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('current_password', wrong_old_res.data)
+
+        # Test POST with valid current password and valid new password
         success_res = self.client.post('/auth/change-password/', {
+            'current_password': 'Password123!',
             'password': 'NewSecurePassword456!',
         })
         self.assertEqual(success_res.status_code, status.HTTP_200_OK)
@@ -188,4 +200,5 @@ class UserHierarchyAndRoleTests(TestCase):
         # Verify password check
         self.operator_ica.refresh_from_db()
         self.assertTrue(self.operator_ica.check_password('NewSecurePassword456!'))
+
 

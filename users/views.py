@@ -124,13 +124,37 @@ class ChangePasswordView(generics.UpdateAPIView):
     def update(self, request, *args, **kwargs):
         user = self.get_object()
         
-        if not request.data.get('password'):
-            return Response({"password": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+        current_password = request.data.get('current_password') or request.data.get('old_password')
+        new_password = request.data.get('password') or request.data.get('new_password')
         
-        user.set_password(request.data['password'])
+        if not current_password:
+            return Response(
+                {"current_password": ["Debes ingresar tu contraseña actual."]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        if not user.check_password(current_password):
+            return Response(
+                {"current_password": ["La contraseña actual ingresada es incorrecta."]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        if not new_password:
+            return Response(
+                {"password": ["Debes ingresar una nueva contraseña."]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        if len(new_password) < 6:
+            return Response(
+                {"password": ["La nueva contraseña debe tener al menos 6 caracteres."]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user.set_password(new_password)
         user.save()
         
-        return Response({"detail": "Password updated successfully."}, status=status.HTTP_200_OK)
+        return Response({"detail": "Contraseña actualizada exitosamente."}, status=status.HTTP_200_OK)
 
 
 class MeView(APIView):

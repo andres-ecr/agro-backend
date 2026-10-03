@@ -257,8 +257,10 @@ class ReportListSerializer(serializers.ModelSerializer):
     tenant_name = serializers.ReadOnlyField(source='tenant.name')
     campaign_name = serializers.ReadOnlyField(source='campaign.name')
     productor = serializers.SerializerMethodField()
+    productor_code = serializers.SerializerMethodField()
     placa = serializers.SerializerMethodField()
     carga = serializers.SerializerMethodField()
+    tipo_reporte = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
@@ -266,7 +268,7 @@ class ReportListSerializer(serializers.ModelSerializer):
             'id', 'producto', 'lote', 'created_at', 
             'totalPesoNeto', 'status', 'tenant', 'tenant_name',
             'campaign', 'campaign_name',
-            'productor', 'placa', 'carga'
+            'productor', 'productor_code', 'placa', 'carga', 'tipo_reporte'
         )
 
     def get_productor(self, obj):
@@ -274,6 +276,15 @@ class ReportListSerializer(serializers.ModelSerializer):
             try:
                 data = json.loads(obj.datosGenerales_json)
                 return data.get('productor', '')
+            except Exception:
+                return ''
+        return ''
+
+    def get_productor_code(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('productorCode') or data.get('codigoProductor') or ''
             except Exception:
                 return ''
         return ''
@@ -291,7 +302,16 @@ class ReportListSerializer(serializers.ModelSerializer):
         if obj.datosGenerales_json:
             try:
                 data = json.loads(obj.datosGenerales_json)
-                return data.get('carga', '')
+                return data.get('carga') or obj.lote or ''
             except Exception:
-                return ''
-        return ''
+                return obj.lote or ''
+        return obj.lote or ''
+
+    def get_tipo_reporte(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('tipoReporte', 'normal')
+            except Exception:
+                return 'normal'
+        return 'normal'

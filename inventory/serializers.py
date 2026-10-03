@@ -311,6 +311,17 @@ class CampaignSerializer(serializers.ModelSerializer):
                 'tenant': 'Debe especificar o tener asignada una sede para la campaña.'
             })
 
+        name_val = attrs.get('name') or (self.instance.name if self.instance else None)
+        if name_val and tenant:
+            name_qs = Campaign.objects.filter(tenant=tenant, name__iexact=str(name_val).strip())
+            if self.instance:
+                name_qs = name_qs.exclude(id=self.instance.id)
+            if name_qs.exists():
+                existing = name_qs.first()
+                raise serializers.ValidationError({
+                    'name': f"Ya existe una campaña registrada con el nombre '{name_val}' en esta sede (estado: {existing.get_status_display()}). Ingrese un nombre diferente o agregue el año/temporada (ej: '{name_val} 2026')."
+                })
+
         if status_val == 'active' and product and tenant:
             qs = Campaign.objects.filter(tenant=tenant, product=product, status='active')
             if self.instance:

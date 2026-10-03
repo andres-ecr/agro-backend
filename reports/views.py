@@ -118,11 +118,6 @@ class ReportViewSet(viewsets.ModelViewSet):
             # Plant admin or operator: strictly filter by user.tenant (cannot be overridden by header)
             queryset = queryset.filter(tenant=user.tenant)
 
-        # Default campaign filtering: if campaign parameter is not specified, default to active campaign
-        campaign_query = self.request.query_params.get('campaign')
-        if campaign_query is None:
-            queryset = queryset.filter(Q(campaign__status='active') | Q(campaign__isnull=True))
-
         return queryset
     
     def get_serializer_class(self):
@@ -161,7 +156,14 @@ class ReportViewSet(viewsets.ModelViewSet):
         from rest_framework.exceptions import ValidationError
 
         campaign = None
-        if producto_nombre and tenant:
+        # Si es un descarte y viene de un reporte origen, heredar la campaña del reporte padre
+        reporte_origen_id = datos_generales.get('reporteOrigenId')
+        if reporte_origen_id:
+            parent_report = Report.objects.filter(id=reporte_origen_id).first()
+            if parent_report and parent_report.campaign:
+                campaign = parent_report.campaign
+
+        if not campaign and producto_nombre and tenant:
             campaign = Campaign.objects.filter(
                 tenant=tenant,
                 product__name__iexact=str(producto_nombre).strip(),

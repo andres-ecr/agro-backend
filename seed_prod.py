@@ -485,7 +485,74 @@ def reset_production_to_base(with_masters=False, default_password=None):
                 plate='VOLVO-V2U-839',
                 defaults={'brand_model': 'Volvo FH 460', 'is_active': True}
             )
-            print(f"  [OK] Empresa Transporte: {t1.razon_social}")
+            print(f"  [OK] Empresa Transporte Ica: {t1.razon_social}")
+
+            # Productores Casma
+            sample_producers_casma = [
+                {
+                    'code': 'PROD-CAS-01',
+                    'name': 'Agrícola Casma Valle Verde S.A.C.',
+                    'ruc': '20601234567',
+                    'address': 'Valle de Casma Km 375, Áncash',
+                    'clps': [
+                        {'code': 'CLP-CAS-001', 'lugar_produccion': 'Sector Huambacho', 'distrito': 'Casma'},
+                        {'code': 'CLP-CAS-002', 'lugar_produccion': 'Sector Tabón', 'distrito': 'Comandante Noel'},
+                    ]
+                },
+                {
+                    'code': 'PROD-CAS-02',
+                    'name': 'Fundo San Rafael de Casma S.A.C.',
+                    'ruc': '20543219876',
+                    'address': 'Fundo San Rafael Sector B, Casma',
+                    'clps': [
+                        {'code': 'CLP-CAS-003', 'lugar_produccion': 'Sector Sechín Alto', 'distrito': 'Casma'},
+                    ]
+                },
+            ]
+            for p_info in sample_producers_casma:
+                p, _ = Producer.objects.update_or_create(
+                    code=p_info['code'],
+                    tenant=casma,
+                    defaults={
+                        'name': p_info['name'],
+                        'clp': p_info['clps'][0]['code'],
+                        'address': f"RUC: {p_info['ruc']} - {p_info['address']}",
+                    }
+                )
+                for clp_data in p_info['clps']:
+                    ProducerCLP.objects.update_or_create(
+                        producer=p,
+                        code=clp_data['code'],
+                        defaults={
+                            'lugar_produccion': clp_data['lugar_produccion'],
+                            'distrito': clp_data.get('distrito', ''),
+                            'is_active': True,
+                        }
+                    )
+                print(f"  [OK] Productor Casma: {p.name} ({p.code})")
+
+            # Transportistas Casma
+            t2, _ = TransportCompany.objects.update_or_create(
+                ruc='20601234567',
+                tenant=casma,
+                defaults={
+                    'razon_social': 'Transportes del Norte Casma S.A.C.',
+                    'address': 'Av. Panamericana Norte 450, Casma',
+                    'phone': '043-889900',
+                    'is_active': True,
+                }
+            )
+            Driver.objects.update_or_create(
+                company=t2,
+                license_number='Q12345678',
+                defaults={'name': 'Carlos Mendoza', 'is_active': True}
+            )
+            Vehicle.objects.update_or_create(
+                company=t2,
+                plate='ABC-789',
+                defaults={'brand_model': 'Volvo FMX 440', 'is_active': True}
+            )
+            print(f"  [OK] Empresa Transporte Casma: {t2.razon_social}")
 
     print("\n==================================================================")
     print("   PRODUCCIÓN REINICIADA EXITOSAMENTE (MODO BASE)")

@@ -46,7 +46,7 @@ from reports.models import Report, ReportAttachment, Responsable
 User = get_user_model()
 
 
-def reset_production_to_base(with_masters=False, default_password=None):
+def reset_production_to_base(default_password=None):
     if not default_password:
         default_password = os.environ.get('DEFAULT_USER_PASSWORD', 'agro123')
 
@@ -58,7 +58,7 @@ def reset_production_to_base(with_masters=False, default_password=None):
         # -------------------------------------------------------------
         # 1. PURGA DE DATOS OPERACIONALES DE PRUEBA
         # -------------------------------------------------------------
-        print("\n[1/5] Purgando datos operacionales de prueba...")
+        print("\n[1/5] Purgando datos operacionales y maestros de prueba...")
 
         del_attachments, _ = ReportAttachment.objects.all().delete()
         del_reports, _ = Report.objects.all().delete()
@@ -67,20 +67,19 @@ def reset_production_to_base(with_masters=False, default_password=None):
         del_campaigns, _ = Campaign.objects.all().delete()
         del_responsables, _ = Responsable.objects.all().delete()
 
+        del_vehicles, _ = Vehicle.objects.all().delete()
+        del_drivers, _ = Driver.objects.all().delete()
+        del_transporters, _ = TransportCompany.objects.all().delete()
+        del_clps, _ = ProducerCLP.objects.all().delete()
+        del_producers, _ = Producer.objects.all().delete()
+
         print(f"  - Reportes de pesaje eliminados: {del_reports} (adjuntos: {del_attachments})")
         print(f"  - Movimientos e ítems de inventario eliminados: {del_movements} movs, {del_items} items")
         print(f"  - Campañas previas eliminadas: {del_campaigns}")
         print(f"  - Responsables de PC compartida limpiados: {del_responsables}")
-
-        if not with_masters:
-            del_vehicles, _ = Vehicle.objects.all().delete()
-            del_drivers, _ = Driver.objects.all().delete()
-            del_transporters, _ = TransportCompany.objects.all().delete()
-            del_clps, _ = ProducerCLP.objects.all().delete()
-            del_producers, _ = Producer.objects.all().delete()
-            print(f"  - Productores de prueba eliminados: {del_producers} (CLPs: {del_clps})")
-            print(f"  - Transportistas de prueba eliminados: {del_transporters} empresas, {del_drivers} choferes, {del_vehicles} vehiculos")
-            print("  --> Maestros en CERO: listos para registro real en balanza/planta.")
+        print(f"  - Productores de prueba eliminados: {del_producers} (CLPs: {del_clps})")
+        print(f"  - Transportistas de prueba eliminados: {del_transporters} empresas, {del_drivers} choferes, {del_vehicles} vehiculos")
+        print("  --> Catálogo de Productores y Transportistas limpio en CERO: listo para registro real en balanza/planta.")
 
         # -------------------------------------------------------------
         # 2. ORGANIZACION Y SEDES (TENANTS)
@@ -167,6 +166,9 @@ def reset_production_to_base(with_masters=False, default_password=None):
                 'campaign_code': 'CAMP-ICA-GRANADA-2026',
             },
         ]
+
+        # Eliminar productos huérfanos o fuera de las sedes oficiales
+        Product.objects.exclude(tenant__in=[ica, casma]).delete()
 
         # Eliminar productos no oficiales de Ica
         Product.objects.filter(tenant=ica).exclude(code__in=[p['code'] for p in ica_products]).delete()
@@ -406,170 +408,18 @@ def reset_production_to_base(with_masters=False, default_password=None):
             )
             print(f"  [OK] Campaña Activa: {camp.name} ({camp.code}) -> Producto: {prod.name}")
 
-        # -------------------------------------------------------------
-        # MAESTROS OPCIONALES (--with-masters)
-        # -------------------------------------------------------------
-        if with_masters:
-            print("\n[+] Sembrando catálogo maestro base de Productores y Transportistas...")
-            # Productores Ica
-            sample_producers = [
-                {
-                    'code': 'PROD-ICA-01',
-                    'name': 'Agrícola Don Ricardo S.A.C.',
-                    'ruc': '20452367891',
-                    'address': 'Sector La Venta S/N, Santiago, Ica',
-                    'clps': [
-                        {'code': 'CLP-ICA-001', 'lugar_produccion': 'Sector La Venta', 'distrito': 'Santiago'},
-                        {'code': 'CLP-ICA-002', 'lugar_produccion': 'Fundo Santa Rita', 'distrito': 'Los Aquijes'},
-                    ]
-                },
-                {
-                    'code': 'PROD-ICA-02',
-                    'name': 'Fundo Santa Elena S.A.C.',
-                    'ruc': '20512893456',
-                    'address': 'Carretera Villacurí Km 285, Salas Guadalupe, Ica',
-                    'clps': [
-                        {'code': 'CLP-ICA-003', 'lugar_produccion': 'Sector Villacurí', 'distrito': 'Salas Guadalupe'},
-                    ]
-                },
-                {
-                    'code': 'PROD-ICA-03',
-                    'name': 'Agrícola La Venta S.A.C.',
-                    'ruc': '20398456123',
-                    'address': 'Valle de Santiago Parcela 42, Santiago, Ica',
-                    'clps': [
-                        {'code': 'CLP-ICA-004', 'lugar_produccion': 'Sector Santiago', 'distrito': 'Santiago'},
-                    ]
-                },
-            ]
-            for p_info in sample_producers:
-                p, _ = Producer.objects.update_or_create(
-                    code=p_info['code'],
-                    tenant=ica,
-                    defaults={
-                        'name': p_info['name'],
-                        'clp': p_info['clps'][0]['code'],
-                        'address': f"RUC: {p_info['ruc']} - {p_info['address']}",
-                    }
-                )
-                for clp_data in p_info['clps']:
-                    ProducerCLP.objects.update_or_create(
-                        producer=p,
-                        code=clp_data['code'],
-                        defaults={
-                            'lugar_produccion': clp_data['lugar_produccion'],
-                            'distrito': clp_data.get('distrito', ''),
-                            'is_active': True,
-                        }
-                    )
-                print(f"  [OK] Productor: {p.name} ({p.code})")
-
-            # Transportistas Ica
-            t1, _ = TransportCompany.objects.update_or_create(
-                ruc='20558192110',
-                tenant=ica,
-                defaults={
-                    'razon_social': 'Transportes Ica Express S.A.C.',
-                    'address': 'Av. Cutervo 450, Ica',
-                    'phone': '056-234567',
-                    'is_active': True,
-                }
-            )
-            Driver.objects.update_or_create(
-                company=t1,
-                license_number='H29509595',
-                defaults={'name': 'Willian Valdivia', 'is_active': True}
-            )
-            Vehicle.objects.update_or_create(
-                company=t1,
-                plate='VOLVO-V2U-839',
-                defaults={'brand_model': 'Volvo FH 460', 'is_active': True}
-            )
-            print(f"  [OK] Empresa Transporte Ica: {t1.razon_social}")
-
-            # Productores Casma
-            sample_producers_casma = [
-                {
-                    'code': 'PROD-CAS-01',
-                    'name': 'Agrícola Casma Valle Verde S.A.C.',
-                    'ruc': '20601234567',
-                    'address': 'Valle de Casma Km 375, Áncash',
-                    'clps': [
-                        {'code': 'CLP-CAS-001', 'lugar_produccion': 'Sector Huambacho', 'distrito': 'Casma'},
-                        {'code': 'CLP-CAS-002', 'lugar_produccion': 'Sector Tabón', 'distrito': 'Comandante Noel'},
-                    ]
-                },
-                {
-                    'code': 'PROD-CAS-02',
-                    'name': 'Fundo San Rafael de Casma S.A.C.',
-                    'ruc': '20543219876',
-                    'address': 'Fundo San Rafael Sector B, Casma',
-                    'clps': [
-                        {'code': 'CLP-CAS-003', 'lugar_produccion': 'Sector Sechín Alto', 'distrito': 'Casma'},
-                    ]
-                },
-            ]
-            for p_info in sample_producers_casma:
-                p, _ = Producer.objects.update_or_create(
-                    code=p_info['code'],
-                    tenant=casma,
-                    defaults={
-                        'name': p_info['name'],
-                        'clp': p_info['clps'][0]['code'],
-                        'address': f"RUC: {p_info['ruc']} - {p_info['address']}",
-                    }
-                )
-                for clp_data in p_info['clps']:
-                    ProducerCLP.objects.update_or_create(
-                        producer=p,
-                        code=clp_data['code'],
-                        defaults={
-                            'lugar_produccion': clp_data['lugar_produccion'],
-                            'distrito': clp_data.get('distrito', ''),
-                            'is_active': True,
-                        }
-                    )
-                print(f"  [OK] Productor Casma: {p.name} ({p.code})")
-
-            # Transportistas Casma
-            t2, _ = TransportCompany.objects.update_or_create(
-                ruc='20601234567',
-                tenant=casma,
-                defaults={
-                    'razon_social': 'Transportes del Norte Casma S.A.C.',
-                    'address': 'Av. Panamericana Norte 450, Casma',
-                    'phone': '043-889900',
-                    'is_active': True,
-                }
-            )
-            Driver.objects.update_or_create(
-                company=t2,
-                license_number='Q12345678',
-                defaults={'name': 'Carlos Mendoza', 'is_active': True}
-            )
-            Vehicle.objects.update_or_create(
-                company=t2,
-                plate='ABC-789',
-                defaults={'brand_model': 'Volvo FMX 440', 'is_active': True}
-            )
-            print(f"  [OK] Empresa Transporte Casma: {t2.razon_social}")
-
     print("\n==================================================================")
     print("   PRODUCCIÓN REINICIADA EXITOSAMENTE (MODO BASE)")
     print("   - Reportes históricos: 0 (listo para pesaje real desde cero)")
+    print("   - Productores y Transportistas: 0 (limpios para registro real en balanza)")
     print("   - Catálogo de Frutas y Variedades configurado")
     print("   - Campañas activas 2026 aperturadas para cada producto")
-    print("   - Usuarios listos con contraseña configurada")
+    print("   - Usuarios oficiales listos con contraseña configurada")
     print("==================================================================")
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Reiniciar base de datos a modo producción base.")
-    parser.add_argument(
-        '--with-masters',
-        action='store_true',
-        help='Incluye productores y transportistas base recomendados en lugar de dejarlos en cero.'
-    )
+    parser = argparse.ArgumentParser(description="Reiniciar base de datos a modo producción base limpio.")
     parser.add_argument(
         '--password',
         type=str,
@@ -578,4 +428,4 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
-    reset_production_to_base(with_masters=args.with_masters, default_password=args.password)
+    reset_production_to_base(default_password=args.password)

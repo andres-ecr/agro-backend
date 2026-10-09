@@ -261,6 +261,7 @@ class ReportListSerializer(serializers.ModelSerializer):
     placa = serializers.SerializerMethodField()
     carga = serializers.SerializerMethodField()
     tipo_reporte = serializers.SerializerMethodField()
+    clp = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
@@ -268,7 +269,8 @@ class ReportListSerializer(serializers.ModelSerializer):
             'id', 'producto', 'lote', 'created_at', 
             'totalPesoNeto', 'status', 'tenant', 'tenant_name',
             'campaign', 'campaign_name',
-            'productor', 'productor_code', 'placa', 'carga', 'tipo_reporte'
+            'productor', 'productor_code', 'placa', 'carga', 'tipo_reporte',
+            'clp'
         )
 
     def get_productor(self, obj):
@@ -315,3 +317,12 @@ class ReportListSerializer(serializers.ModelSerializer):
             except Exception:
                 return 'normal'
         return 'normal'
+
+    def get_clp(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('clp') or data.get('codigoClp') or ''
+            except Exception:
+                return ''
+        return ''

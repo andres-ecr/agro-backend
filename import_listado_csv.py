@@ -127,7 +127,18 @@ def clean_producer(raw_prod, cod_interno):
     return (code, name)
 
 
-def import_csv(file_path, tenant_code='ica', dry_run=False):
+def resolve_csv_path(given_path):
+    """Resuelve la ruta del CSV buscando en la ruta dada o en data/LISTADO.csv."""
+    if given_path and os.path.exists(given_path):
+        return given_path
+    local_data = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'LISTADO.csv')
+    if os.path.exists(local_data):
+        return local_data
+    return given_path
+
+
+def import_csv(file_path=None, tenant_code='ica', dry_run=False):
+    file_path = resolve_csv_path(file_path)
     print("==================================================================")
     print("   IMPORTACIÓN DE MAESTROS DESDE CSV")
     print(f"   Archivo: {file_path}")

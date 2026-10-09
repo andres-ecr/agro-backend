@@ -9,8 +9,8 @@ class Command(BaseCommand):
         parser.add_argument(
             '--file',
             type=str,
-            default=r"C:\Users\Panda\Downloads\LISTADO.csv",
-            help="Ruta al archivo LISTADO.csv"
+            default=None,
+            help="Ruta al archivo LISTADO.csv (si no se especifica, busca en data/LISTADO.csv)"
         )
         parser.add_argument(
             '--tenant',

@@ -127,6 +127,47 @@ def clean_producer(raw_prod, cod_interno):
     return (code, name)
 
 
+def clean_campo(campo_str):
+    """
+    Separa el lugar de producción y el distrito desde la columna CAMPO.
+    Antes del primer guión o la primera coma es el lugar de producción,
+    y después de eso todo lo que resta es el distrito.
+    """
+    if not campo_str:
+        return ('', '')
+    raw = campo_str.strip()
+
+    # 1. Si contiene coma, la primera coma es el separador
+    if ',' in raw:
+        parts = raw.split(',', 1)
+        lugar = parts[0].strip()
+        distrito = parts[1].strip()
+        lugar = re.sub(r'[,–—\-]+$', '', lugar).strip()
+        distrito = re.sub(r'^[,–—\-]+', '', distrito).strip()
+        return (lugar.upper(), distrito.upper())
+
+    # 2. Si no hay coma, buscar guión delimitador con espacios alrededor (' - ' o ' -' o '- ')
+    # para evitar cortar códigos internos de lote/asentamiento como 'E-6' o 'P-1'.
+    match_spaced = re.search(r'\s+-\s*|\s*-\s+', raw)
+    if match_spaced:
+        lugar = raw[:match_spaced.start()].strip()
+        distrito = raw[match_spaced.end():].strip()
+        lugar = re.sub(r'[,–—\-]+$', '', lugar).strip()
+        distrito = re.sub(r'^[,–—\-]+', '', distrito).strip()
+        return (lugar.upper(), distrito.upper())
+
+    # 3. Si no hay guión espaciado, tomar el primer guión como separador
+    if '-' in raw:
+        parts = raw.split('-', 1)
+        lugar = parts[0].strip()
+        distrito = parts[1].strip()
+        lugar = re.sub(r'[,–—\-]+$', '', lugar).strip()
+        distrito = re.sub(r'^[,–—\-]+', '', distrito).strip()
+        return (lugar.upper(), distrito.upper())
+
+    return (raw.upper(), '')
+
+
 def resolve_csv_path(given_path):
     """Resuelve la ruta del CSV buscando en la ruta dada o en data/LISTADO.csv."""
     if given_path and os.path.exists(given_path):
@@ -190,6 +231,7 @@ def import_csv(file_path=None, tenant_code='ica', dry_run=False):
 
             prod_code, prod_name = clean_producer(raw_prod, cod_interno)
             clean_c = clean_clp(clp)
+            lugar_prod, distrito_prod = clean_campo(campo)
             truck_brand, truck_plate = clean_truck(camion)
             driver_name, driver_lic = clean_driver(chofer)
 
@@ -216,8 +258,8 @@ def import_csv(file_path=None, tenant_code='ica', dry_run=False):
                         producer=producer,
                         code=clean_c,
                         defaults={
-                            'lugar_produccion': campo,
-                            'distrito': campo.split('-')[-1].strip() if '-' in campo else '',
+                            'lugar_produccion': lugar_prod,
+                            'distrito': distrito_prod,
                             'is_active': True,
                         }
                     )
@@ -227,12 +269,10 @@ def import_csv(file_path=None, tenant_code='ica', dry_run=False):
                 if clean_c:
                     clps_created += 1
 
-            # 3. Transportista, Vehículo y Chofer (si la fila tiene datos de transporte)
+            # 3. Transportista, Vehículo y Chofer (SOLO si tiene razón social)
             company_name = transp.strip().upper()
-            if not company_name and (truck_plate or driver_name):
-                company_name = f"TRANSPORTE PARTICULAR - {driver_name or truck_plate}"
 
-            if company_name and (truck_plate or driver_name):
+            if company_name:
                 if not dry_run:
                     if company_name not in transporters_cache:
                         # Generar RUC de referencia determinístico si no se tiene en el CSV
@@ -286,8 +326,8 @@ def import_csv(file_path=None, tenant_code='ica', dry_run=False):
                         drivers_created += 1
 
             status_icon = "[OK]" if not dry_run else "[PREVIEW]"
-            t_detail = f" | Transp: {company_name[:20]} ({truck_plate})" if truck_plate else ""
-            print(f"  {status_icon} Fila {idx:2d} -> Cod: {prod_code:<6} | Productor: {prod_name:<38} | CLP: {clean_c:<15}{t_detail}")
+            t_detail = f" | Transp: {company_name[:20]} ({truck_plate})" if company_name else " | (Sin transportista)"
+            print(f"  {status_icon} Fila {idx:2d} -> Cod: {prod_code:<6} | Productor: {prod_name:<35} | CLP: {clean_c:<14} | Lugar: {lugar_prod[:18]:<18} | Dist: {distrito_prod[:18]:<18}{t_detail}")
 
         if dry_run:
             transaction.set_rollback(True)

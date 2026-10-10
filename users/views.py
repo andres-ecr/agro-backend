@@ -1,11 +1,12 @@
 from django.contrib.auth import get_user_model
 from rest_framework import viewsets, permissions, status, generics
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import UserSerializer, UserProfileSerializer, CustomTokenObtainPairSerializer
-from .permissions import IsAdminUser, IsSupervisorUser
+from .permissions import IsAdminUser, IsSupervisorUser, CanManageSubordinateUser, ROLE_RANK
+from django.db.models import Q
 from rest_framework.views import APIView
 
 User = get_user_model()
@@ -41,12 +42,18 @@ class UserViewSet(viewsets.ModelViewSet):
             if not tenant:
                 return User.objects.none()
             return User.objects.filter(tenant=tenant).exclude(role='superadmin').order_by('-date_joined')
+        elif getattr(user, 'role', None) == 'supervisor' and user.tenant_id:
+            return User.objects.filter(tenant_id=user.tenant_id).filter(
+                Q(pk=user.pk) | Q(role='operator', is_superuser=False)
+            ).order_by('-date_joined')
         else:
             return User.objects.filter(id=user.id)
     
     def perform_create(self, serializer):
         user = self.request.user
         if getattr(user, 'role', None) != 'superadmin' and not user.is_superuser:
+            if serializer.validated_data.get('is_superuser'):
+                raise PermissionDenied('No tiene permisos para crear superusuarios.')
             role = serializer.validated_data.get('role', 'operator')
             if role == 'superadmin':
                 raise ValidationError({'role': 'No tiene permisos para crear usuarios superadmin.'})
@@ -62,7 +69,13 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         user = self.request.user
+        actor_rank = 3 if user.is_superuser else ROLE_RANK.get(user.role, -1)
+        role = serializer.validated_data.get('role')
+        if serializer.validated_data.get('is_superuser') or (role and ROLE_RANK.get(role, -1) >= actor_rank):
+            raise PermissionDenied('Solo puede asignar privilegios y roles inferiores al suyo.')
         if getattr(user, 'role', None) != 'superadmin' and not user.is_superuser:
+            if 'is_superuser' in serializer.validated_data:
+                raise PermissionDenied('No tiene permisos para modificar privilegios de superusuario.')
             role = serializer.validated_data.get('role')
             if role:
                 if role == 'superadmin':
@@ -82,7 +95,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             permission_classes = [permissions.IsAuthenticated, IsAdminUser]
         elif self.action in ['update', 'partial_update', 'destroy']:
-            permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+            permission_classes = [permissions.IsAuthenticated, CanManageSubordinateUser]
         elif self.action in ['list', 'retrieve']:
             permission_classes = [permissions.IsAuthenticated, IsSupervisorUser]
         else:

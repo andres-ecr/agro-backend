@@ -81,11 +81,28 @@ class User(AbstractUser):
         related_name='users',
         verbose_name=_('tenant')
     )
+    deleted_at = models.DateTimeField(
+        _('deleted at'),
+        null=True,
+        blank=True,
+        help_text=_('Date and time when the user was soft-deleted.')
+    )
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['first_name', 'last_name']
 
     objects = UserManager()
+
+    def soft_delete(self):
+        from django.utils import timezone
+        self.is_active = False
+        self.deleted_at = timezone.now()
+        self.save(update_fields=['is_active', 'deleted_at'])
+
+    def restore(self):
+        self.is_active = True
+        self.deleted_at = None
+        self.save(update_fields=['is_active', 'deleted_at'])
     
     def get_full_name(self):
         """Return the first_name plus the last_name, with a space in between."""

@@ -103,6 +103,38 @@ class UserStatusHierarchyTests(TestCase):
         target.refresh_from_db()
         self.assertFalse(target.is_active)
 
+    def test_admin_soft_deletes_subordinate_and_can_restore(self):
+        self.client.force_authenticate(self.accounts['admin'])
+        target = self.accounts['operator']
+        target.is_active = True
+        target.deleted_at = None
+        target.save(update_fields=['is_active', 'deleted_at'])
+
+        response = self.client.delete(f'/users/{target.pk}/')
+        self.assertEqual(response.status_code, 204)
+        target.refresh_from_db()
+        self.assertFalse(target.is_active)
+        self.assertIsNotNone(target.deleted_at)
+        self.assertTrue(User.objects.filter(pk=target.pk).exists())
+
+        # List should exclude soft-deleted user by default
+        list_response = self.client.get('/users/')
+        self.assertEqual(list_response.status_code, 200)
+        user_ids = [u['id'] for u in list_response.data.get('results', list_response.data)]
+        self.assertNotIn(target.pk, user_ids)
+
+        # Restore
+        restore_response = self.client.post(f'/users/{target.pk}/restore/')
+        self.assertEqual(restore_response.status_code, 200)
+        target.refresh_from_db()
+        self.assertTrue(target.is_active)
+        self.assertIsNone(target.deleted_at)
+
+        # List should include restored user
+        list_response_after = self.client.get('/users/')
+        user_ids_after = [u['id'] for u in list_response_after.data.get('results', list_response_after.data)]
+        self.assertIn(target.pk, user_ids_after)
+
     def test_self_profile_and_created_privileges_cannot_bypass_hierarchy(self):
         self.client.force_authenticate(self.accounts['admin'])
         response = self.client.patch('/auth/me/', {'is_active': False})

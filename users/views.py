@@ -36,18 +36,41 @@ class UserViewSet(viewsets.ModelViewSet):
                     queryset = queryset.filter(tenant_id=int(tenant_id))
                 except (ValueError, TypeError):
                     queryset = queryset.filter(tenant_id=tenant_id)
-            return queryset
         elif getattr(user, 'role', None) == 'admin':
             tenant = getattr(user, 'tenant', None)
             if not tenant:
                 return User.objects.none()
-            return User.objects.filter(tenant=tenant).exclude(role='superadmin').order_by('-date_joined')
+            queryset = User.objects.filter(tenant=tenant).exclude(role='superadmin').order_by('-date_joined')
         elif getattr(user, 'role', None) == 'supervisor' and user.tenant_id:
-            return User.objects.filter(tenant_id=user.tenant_id).filter(
+            queryset = User.objects.filter(tenant_id=user.tenant_id).filter(
                 Q(pk=user.pk) | Q(role='operator', is_superuser=False)
             ).order_by('-date_joined')
         else:
-            return User.objects.filter(id=user.id)
+            queryset = User.objects.filter(id=user.id)
+
+        # Soft-delete filter: default is to exclude deleted users unless requested
+        if self.action != 'restore':
+            include_deleted = self.request.query_params.get('include_deleted', '').lower() in ('true', '1')
+            deleted_only = self.request.query_params.get('deleted', '').lower() in ('true', '1')
+            if deleted_only:
+                queryset = queryset.filter(deleted_at__isnull=False)
+            elif not include_deleted:
+                queryset = queryset.filter(deleted_at__isnull=True)
+
+        return queryset
+    
+    def perform_destroy(self, instance):
+        user = self.request.user
+        if instance == user:
+            raise PermissionDenied('No puedes eliminar tu propia cuenta.')
+        instance.soft_delete()
+
+    @action(detail=True, methods=['POST'], permission_classes=[permissions.IsAuthenticated, CanManageSubordinateUser])
+    def restore(self, request, pk=None):
+        user = self.get_object()
+        user.restore()
+        serializer = self.get_serializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
     def perform_create(self, serializer):
         user = self.request.user
@@ -94,7 +117,7 @@ class UserViewSet(viewsets.ModelViewSet):
         """Set custom permissions for each action"""
         if self.action == 'create':
             permission_classes = [permissions.IsAuthenticated, IsAdminUser]
-        elif self.action in ['update', 'partial_update', 'destroy']:
+        elif self.action in ['update', 'partial_update', 'destroy', 'restore']:
             permission_classes = [permissions.IsAuthenticated, CanManageSubordinateUser]
         elif self.action in ['list', 'retrieve']:
             permission_classes = [permissions.IsAuthenticated, IsSupervisorUser]

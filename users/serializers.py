@@ -22,6 +22,11 @@ class UserSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'password': {'write_only': True, 'required': False, 'allow_blank': True}
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None and 'email' in self.fields:
+            self.fields['email'].required = False
     
     def get_tenant_details(self, obj):
         if obj.tenant:

@@ -26,6 +26,8 @@ class ReportFilter(django_filters.FilterSet):
     licencia = django_filters.CharFilter(method='filter_licencia')
     carga = django_filters.CharFilter(method='filter_carga')
     clp = django_filters.CharFilter(method='filter_clp')
+    guia = django_filters.CharFilter(method='filter_guia')
+    guia_remision = django_filters.CharFilter(method='filter_guia')
     tenant = django_filters.CharFilter(method='filter_tenant')
     
     campaign = django_filters.CharFilter(method='filter_campaign')
@@ -58,6 +60,10 @@ class ReportFilter(django_filters.FilterSet):
         """Filtrar por clp (búsqueda parcial en datosGenerales_json)"""
         return queryset.filter(datosGenerales_json__icontains=value)
 
+    def filter_guia(self, queryset, name, value):
+        """Filtrar por guía de remisión (búsqueda parcial en datosGenerales_json)"""
+        return queryset.filter(datosGenerales_json__icontains=value.upper())
+
     def filter_tenant(self, queryset, name, value):
         """Filtrar por tenant (ID numérico o ignorar si es 'all')"""
         if not value or str(value).lower() in ('all', 'undefined', 'null'):
@@ -76,7 +82,10 @@ class ReportFilter(django_filters.FilterSet):
     
     class Meta:
         model = Report
-        fields = ['fecha_desde', 'fecha_hasta', 'lote', 'producto', 'productor', 'placa', 'licencia', 'carga', 'clp', 'tenant', 'campaign']
+        fields = [
+            'fecha_desde', 'fecha_hasta', 'lote', 'producto', 'productor', 'acopiador',
+            'placa', 'licencia', 'carga', 'clp', 'guia', 'guia_remision', 'tenant', 'campaign'
+        ]
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 10

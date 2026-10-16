@@ -558,3 +558,80 @@ class ReportTenantAndFilterTests(TestCase):
         # Snapshot still preserved
         self.assertEqual(self.camp_uva.closed_summary['total_kilos_netos'], 250.0)
 
+    def test_peso_guia_and_diferencia_peso_lifecycle(self):
+        self.client.force_authenticate(user=self.user_ica)
+        payload = {
+            'id': 'REP-GUIA-001',
+            'producto': 'Uva',
+            'lote': 'GUIA-TEST',
+            'datosGenerales': {
+                'producto': 'Uva',
+                'carga': 'GUIA-TEST',
+                'guiaRemision': 'TGR-0099',
+                'pesoGuia': '200.00',
+            },
+            'registros': [
+                {
+                    'id': 'ROW-1',
+                    'pesoBruto': '300.00',
+                    'pesoParihuela': '20.00',
+                    'tara': '30.00',
+                    'jabas': 10,
+                    'pesoNeto': '250.00'
+                }
+            ],
+            'totales': {
+                'totalPesoBruto': '300.00',
+                'totalPesoNeto': '250.00',
+                'totalJabas': 10
+            }
+        }
+        res_create = self.client.post('/reports/', data=payload, format='json')
+        self.assertEqual(res_create.status_code, status.HTTP_201_CREATED)
+
+        report = Report.objects.get(id='REP-GUIA-001')
+        general = json.loads(report.datosGenerales_json)
+        self.assertEqual(general['pesoGuia'], '200.00')
+        self.assertEqual(general['diferenciaPeso'], '50.00')
+
+        # Verify ReportListSerializer exposes guia_remision, peso_guia, and diferencia_peso
+        res_list = self.client.get('/reports/')
+        self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+        item = next(r for r in res_list.data['results'] if r['id'] == 'REP-GUIA-001')
+        self.assertEqual(item['guia_remision'], 'TGR-0099')
+        self.assertEqual(item['peso_guia'], '200.00')
+        self.assertEqual(item['diferencia_peso'], '50.00')
+
+        # Verify filter by guia
+        res_filter = self.client.get('/reports/?guia=0099')
+        self.assertEqual(res_filter.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_filter.data['results']), 1)
+        self.assertEqual(res_filter.data['results'][0]['id'], 'REP-GUIA-001')
+
+        # Verify admin update recalculates diferenciaPeso
+        admin_ica = User.objects.create_user(email='adm_guia@agro.com', password='password123', role='admin', tenant=self.tenant1)
+        self.client.force_authenticate(user=admin_ica)
+        update_payload = {
+            'datosGenerales': {
+                'producto': 'Uva',
+                'carga': 'GUIA-TEST',
+                'pesoGuia': '220.00',
+            },
+            'registros': [
+                {
+                    'id': 'ROW-1',
+                    'pesoBruto': '300.00',
+                    'pesoParihuela': '20.00',
+                    'tara': '30.00',
+                    'jabas': 10,
+                }
+            ],
+            'expectedRevision': report.updated_at.isoformat()
+        }
+        res_update = self.client.put('/reports/REP-GUIA-001/', data=update_payload, format='json')
+        self.assertEqual(res_update.status_code, status.HTTP_200_OK)
+        report.refresh_from_db()
+        updated_general = json.loads(report.datosGenerales_json)
+        self.assertEqual(updated_general['pesoGuia'], '220.00')
+        self.assertEqual(updated_general['diferenciaPeso'], '30.00')
+

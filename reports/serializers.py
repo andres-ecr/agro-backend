@@ -123,6 +123,14 @@ class ReportSerializer(serializers.ModelSerializer):
         if any(value > Decimal('99999999.99') for key, value in totals.items() if key != 'totalJabas') or totals['totalJabas'] > 2147483647:
             raise serializers.ValidationError({'registros': 'Los totales superan el límite permitido.'})
         totals['promedioPorJaba'] = (totals['totalPesoNeto'] / totals['totalJabas']).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if totals['totalJabas'] else Decimal('0')
+        if general.get('pesoGuia') not in (None, ''):
+            try:
+                peso_guia = Decimal(str(general['pesoGuia']))
+                if peso_guia.is_finite() and peso_guia >= 0:
+                    diff = totals['totalPesoNeto'] - peso_guia
+                    general['diferenciaPeso'] = str(diff.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+            except (InvalidOperation, ValueError, TypeError):
+                pass
         campaign = self.instance.campaign
         if not campaign or campaign.tenant_id != self.instance.tenant_id or campaign.product.name.casefold() != general['producto'].casefold():
             from inventory.models import Campaign
@@ -199,6 +207,15 @@ class ReportSerializer(serializers.ModelSerializer):
             except:
                 totalJabas = 0
             
+            if datosGenerales.get('pesoGuia') not in (None, ''):
+                try:
+                    peso_guia = Decimal(str(datosGenerales['pesoGuia']))
+                    if peso_guia.is_finite() and peso_guia >= 0:
+                        diff = totalPesoNeto - peso_guia
+                        datosGenerales['diferenciaPeso'] = str(diff.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+                except (InvalidOperation, ValueError, TypeError):
+                    pass
+
             created_by = validated_data.get('created_by')
             tenant = validated_data.get('tenant')
             campaign = validated_data.get('campaign')
@@ -263,6 +280,9 @@ class ReportListSerializer(serializers.ModelSerializer):
     carga = serializers.SerializerMethodField()
     tipo_reporte = serializers.SerializerMethodField()
     clp = serializers.SerializerMethodField()
+    guia_remision = serializers.SerializerMethodField()
+    peso_guia = serializers.SerializerMethodField()
+    diferencia_peso = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
@@ -271,7 +291,7 @@ class ReportListSerializer(serializers.ModelSerializer):
             'totalPesoNeto', 'status', 'tenant', 'tenant_name',
             'campaign', 'campaign_name',
             'productor', 'productor_code', 'acopiador', 'placa', 'carga', 'tipo_reporte',
-            'clp'
+            'clp', 'guia_remision', 'peso_guia', 'diferencia_peso'
         )
 
     def get_productor(self, obj):
@@ -333,6 +353,35 @@ class ReportListSerializer(serializers.ModelSerializer):
             try:
                 data = json.loads(obj.datosGenerales_json)
                 return data.get('clp') or data.get('codigoClp') or ''
+            except Exception:
+                return ''
+        return ''
+
+    def get_guia_remision(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('guiaRemision') or data.get('numeroGuia') or data.get('guiaPrincipal') or ''
+            except Exception:
+                return ''
+        return ''
+
+    def get_peso_guia(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                val = data.get('pesoGuia')
+                return str(val) if val not in (None, '') else ''
+            except Exception:
+                return ''
+        return ''
+
+    def get_diferencia_peso(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                val = data.get('diferenciaPeso')
+                return str(val) if val not in (None, '') else ''
             except Exception:
                 return ''
         return ''

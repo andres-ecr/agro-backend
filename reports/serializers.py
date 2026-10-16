@@ -258,6 +258,7 @@ class ReportListSerializer(serializers.ModelSerializer):
     campaign_name = serializers.ReadOnlyField(source='campaign.name')
     productor = serializers.SerializerMethodField()
     productor_code = serializers.SerializerMethodField()
+    acopiador = serializers.SerializerMethodField()
     placa = serializers.SerializerMethodField()
     carga = serializers.SerializerMethodField()
     tipo_reporte = serializers.SerializerMethodField()
@@ -269,7 +270,7 @@ class ReportListSerializer(serializers.ModelSerializer):
             'id', 'producto', 'lote', 'created_at', 
             'totalPesoNeto', 'status', 'tenant', 'tenant_name',
             'campaign', 'campaign_name',
-            'productor', 'productor_code', 'placa', 'carga', 'tipo_reporte',
+            'productor', 'productor_code', 'acopiador', 'placa', 'carga', 'tipo_reporte',
             'clp'
         )
 
@@ -287,6 +288,15 @@ class ReportListSerializer(serializers.ModelSerializer):
             try:
                 data = json.loads(obj.datosGenerales_json)
                 return data.get('productorCode') or data.get('codigoProductor') or ''
+            except Exception:
+                return ''
+        return ''
+
+    def get_acopiador(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('acopiador', '')
             except Exception:
                 return ''
         return ''

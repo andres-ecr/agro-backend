@@ -21,6 +21,7 @@ class ReportFilter(django_filters.FilterSet):
     lote = django_filters.CharFilter(field_name='lote', lookup_expr='icontains')
     producto = django_filters.CharFilter(field_name='producto', lookup_expr='iexact')
     productor = django_filters.CharFilter(method='filter_productor')
+    acopiador = django_filters.CharFilter(method='filter_acopiador')
     placa = django_filters.CharFilter(method='filter_placa')
     licencia = django_filters.CharFilter(method='filter_licencia')
     carga = django_filters.CharFilter(method='filter_carga')
@@ -33,6 +34,10 @@ class ReportFilter(django_filters.FilterSet):
         """Filtrar por productor (búsqueda parcial en datosGenerales_json)"""
         # Buscar el valor de forma parcial e insensible a mayúsculas/minúsculas
         # Esto buscará cualquier ocurrencia del valor en el JSON
+        return queryset.filter(datosGenerales_json__icontains=value.upper())
+
+    def filter_acopiador(self, queryset, name, value):
+        """Filtrar por acopiador (búsqueda parcial en datosGenerales_json)"""
         return queryset.filter(datosGenerales_json__icontains=value.upper())
     
     def filter_placa(self, queryset, name, value):

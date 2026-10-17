@@ -43,7 +43,7 @@ class UserViewSet(viewsets.ModelViewSet):
             queryset = User.objects.filter(tenant=tenant).exclude(role='superadmin').order_by('-date_joined')
         elif getattr(user, 'role', None) == 'supervisor' and user.tenant_id:
             queryset = User.objects.filter(tenant_id=user.tenant_id).filter(
-                Q(pk=user.pk) | Q(role='operator', is_superuser=False)
+                Q(pk=user.pk) | Q(role__in=['operator', 'viewer'], is_superuser=False)
             ).order_by('-date_joined')
         else:
             queryset = User.objects.filter(id=user.id)
@@ -83,7 +83,9 @@ class UserViewSet(viewsets.ModelViewSet):
             tenant = getattr(user, 'tenant', None)
             if not tenant:
                 raise ValidationError({'tenant': 'El usuario administrador no tiene una sede asignada.'})
-            allowed_roles = tenant.allowed_roles if getattr(tenant, 'allowed_roles', None) else ['admin', 'operator']
+            allowed_roles = list(tenant.allowed_roles) if getattr(tenant, 'allowed_roles', None) else ['admin', 'operator', 'viewer']
+            if 'operator' in allowed_roles and 'viewer' not in allowed_roles:
+                allowed_roles.append('viewer')
             if role not in allowed_roles:
                 raise ValidationError({'role': f"El rol '{role}' no está permitido para esta sede. Roles permitidos: {', '.join(allowed_roles)}"})
             serializer.save(tenant=tenant, role=role)
@@ -106,7 +108,9 @@ class UserViewSet(viewsets.ModelViewSet):
                 tenant = getattr(user, 'tenant', None)
                 if not tenant:
                     raise ValidationError({'tenant': 'El usuario administrador no tiene una sede asignada.'})
-                allowed_roles = tenant.allowed_roles if getattr(tenant, 'allowed_roles', None) else ['admin', 'operator']
+                allowed_roles = list(tenant.allowed_roles) if getattr(tenant, 'allowed_roles', None) else ['admin', 'operator', 'viewer']
+                if 'operator' in allowed_roles and 'viewer' not in allowed_roles:
+                    allowed_roles.append('viewer')
                 if role not in allowed_roles:
                     raise ValidationError({'role': f"El rol '{role}' no está permitido para esta sede. Roles permitidos: {', '.join(allowed_roles)}"})
             serializer.save(tenant=getattr(user, 'tenant', None))

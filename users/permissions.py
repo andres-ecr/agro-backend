@@ -1,7 +1,7 @@
 from rest_framework import permissions
 
 
-ROLE_RANK = {'operator': 0, 'supervisor': 1, 'admin': 2, 'superadmin': 3}
+ROLE_RANK = {'viewer': 0, 'operator': 0, 'supervisor': 1, 'admin': 2, 'superadmin': 3}
 
 
 def can_manage_user(actor, target):

@@ -50,12 +50,14 @@ class User(AbstractUser):
     ROLE_ADMIN = 'admin'
     ROLE_SUPERVISOR = 'supervisor'
     ROLE_OPERATOR = 'operator'
+    ROLE_VIEWER = 'viewer'
     
     ROLE_CHOICES = [
         (ROLE_SUPERADMIN, _('Super Admin')),
         (ROLE_ADMIN, _('Administrador de Sede')),
         (ROLE_SUPERVISOR, _('Supervisor')),
         (ROLE_OPERATOR, _('Operario')),
+        (ROLE_VIEWER, _('Visualizador')),
     ]
     
     role = models.CharField(

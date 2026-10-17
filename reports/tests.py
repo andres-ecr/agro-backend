@@ -41,7 +41,7 @@ class ReportEditingTests(TestCase):
 
     def test_update_permission_and_tenant_boundary(self):
         self.payload['expectedRevision'] = self.report.updated_at.isoformat()
-        for role in ('operator', 'supervisor'):
+        for role in ('operator', 'supervisor', 'viewer'):
             self.operator.role = role
             self.operator.save()
             self.client.force_authenticate(self.operator)
@@ -54,6 +54,29 @@ class ReportEditingTests(TestCase):
         self.admin.save()
         self.client.force_authenticate(self.admin)
         self.assertEqual(self.client.put('/reports/EDIT-1/', self.payload, format='json').status_code, 200)
+
+    def test_viewer_role_is_strictly_read_only(self):
+        viewer = User.objects.create_user(email='viewer@agro.com', password='password123', role='viewer', tenant=self.tenant)
+        self.client.force_authenticate(viewer)
+
+        # Read operations must succeed
+        list_resp = self.client.get('/reports/')
+        self.assertEqual(list_resp.status_code, 200)
+        detail_resp = self.client.get('/reports/EDIT-1/')
+        self.assertEqual(detail_resp.status_code, 200)
+
+        # Create must be forbidden (403)
+        create_resp = self.client.post('/reports/', self.payload, format='json')
+        self.assertEqual(create_resp.status_code, 403)
+
+        # Update must be forbidden (403)
+        self.payload['expectedRevision'] = self.report.updated_at.isoformat()
+        update_resp = self.client.put('/reports/EDIT-1/', self.payload, format='json')
+        self.assertEqual(update_resp.status_code, 403)
+
+        # Delete must be forbidden (403)
+        delete_resp = self.client.delete('/reports/EDIT-1/')
+        self.assertEqual(delete_resp.status_code, 403)
 
     def test_invalid_values_and_immutable_fields_leave_report_unchanged(self):
         self.payload['expectedRevision'] = self.report.updated_at.isoformat()

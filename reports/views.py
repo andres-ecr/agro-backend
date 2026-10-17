@@ -93,14 +93,29 @@ class StandardResultsSetPagination(PageNumberPagination):
     max_page_size = 100
 
 class CanEditReport(BasePermission):
-    message = 'Solo los administradores pueden editar reportes.'
+    message = 'Solo los administradores pueden editar o eliminar reportes.'
 
     def has_permission(self, request, view):
-        if view.action not in ('update', 'partial_update'):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        if user.is_superuser or getattr(user, 'role', None) in ('admin', 'superadmin'):
             return True
-        return bool(request.user.is_authenticated and (
-            request.user.is_superuser or getattr(request.user, 'role', None) in ('admin', 'superadmin')
-        ))
+
+        # Viewer can only perform read actions
+        if getattr(user, 'role', None) == 'viewer':
+            if view.action in ('list', 'retrieve', 'download', 'dashboard_metrics', 'test_filters'):
+                return True
+            self.message = 'Los usuarios con rol visualizador solo tienen permisos de lectura.'
+            return False
+
+        # Operator / supervisor cannot edit or delete
+        if view.action in ('update', 'partial_update', 'destroy'):
+            self.message = 'Solo los administradores pueden editar o eliminar reportes.'
+            return False
+
+        return True
 
 
 class ReportViewSet(viewsets.ModelViewSet):

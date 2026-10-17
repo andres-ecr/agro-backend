@@ -281,6 +281,32 @@ class UserHierarchyAndRoleTests(TestCase):
         # Tenant must be forced to admin's tenant (Ica)
         self.assertEqual(new_user.tenant, self.tenant_ica)
 
+    def test_admin_can_create_and_manage_viewer_but_operator_cannot_modify_viewer(self):
+        self.client.force_authenticate(user=self.admin_ica)
+        # Admin creates viewer
+        response = self.client.post('/auth/users/', {
+            'email': 'new.viewer@agro.com',
+            'password': 'Password123!',
+            'first_name': 'New',
+            'last_name': 'Viewer',
+            'role': 'viewer',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        viewer = User.objects.get(email='new.viewer@agro.com')
+        self.assertEqual(viewer.role, 'viewer')
+        self.assertEqual(viewer.tenant, self.tenant_ica)
+
+        # Admin can update viewer status
+        patch_res = self.client.patch(f'/auth/users/{viewer.id}/', {'is_active': False})
+        self.assertEqual(patch_res.status_code, status.HTTP_200_OK)
+        viewer.refresh_from_db()
+        self.assertFalse(viewer.is_active)
+
+        # Operator CANNOT modify viewer
+        self.client.force_authenticate(user=self.operator_ica)
+        op_patch_res = self.client.patch(f'/auth/users/{viewer.id}/', {'is_active': True})
+        self.assertEqual(op_patch_res.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_admin_cannot_create_role_not_allowed_for_tenant(self):
         self.tenant_ica.allowed_roles = ['admin', 'operator']
         self.tenant_ica.save()

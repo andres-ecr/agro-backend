@@ -658,3 +658,77 @@ class ReportTenantAndFilterTests(TestCase):
         self.assertEqual(updated_general['pesoGuia'], '220.00')
         self.assertEqual(updated_general['diferenciaPeso'], '30.00')
 
+    def test_descarte_report_does_not_generate_peso_guia_or_diferencia_peso(self):
+        self.client.force_authenticate(user=self.user_ica)
+        # Create a descarte report with pesoGuia passed in payload
+        descarte_payload = {
+            'id': 'REP-DESC-001',
+            'datosGenerales': {
+                'producto': 'Uva',
+                'carga': 'DESC-CRG-001',
+                'lote': 'DESC-CRG-001',
+                'tipoReporte': 'descarte',
+                'cargaOriginal': 'CRG-001',
+                'pesoGuia': '1000.00',
+            },
+            'registros': [
+                {
+                    'id': 'ROW-1',
+                    'pesoBruto': '120.00',
+                    'pesoParihuela': '10.00',
+                    'tara': '10.00',
+                    'jabas': 5,
+                }
+            ],
+            'totales': {
+                'totalPesoBruto': '120.00',
+                'totalPesoNeto': '100.00',
+                'totalJabas': 5,
+            }
+        }
+        res_create = self.client.post('/reports/', data=descarte_payload, format='json')
+        self.assertEqual(res_create.status_code, status.HTTP_201_CREATED)
+
+        report = Report.objects.get(id='REP-DESC-001')
+        general = json.loads(report.datosGenerales_json)
+        self.assertNotIn('pesoGuia', general)
+        self.assertNotIn('diferenciaPeso', general)
+
+        # In list serializer, peso_guia and diferencia_peso must be blank
+        res_list = self.client.get('/reports/')
+        self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+        item = next(r for r in res_list.data['results'] if r['id'] == 'REP-DESC-001')
+        self.assertEqual(item['peso_guia'], '')
+        self.assertEqual(item['diferencia_peso'], '')
+
+        # In update, pesoGuia must also be stripped
+        admin_ica = User.objects.filter(email='adm_guia@agro.com').first()
+        if not admin_ica:
+            admin_ica = User.objects.create_user(email='adm_guia@agro.com', password='password123', role='admin', tenant=self.tenant1)
+        self.client.force_authenticate(user=admin_ica)
+        update_payload = {
+            'datosGenerales': {
+                'producto': 'Uva',
+                'carga': 'DESC-CRG-001',
+                'tipoReporte': 'descarte',
+                'pesoGuia': '500.00',
+            },
+            'registros': [
+                {
+                    'id': 'ROW-1',
+                    'pesoBruto': '120.00',
+                    'pesoParihuela': '10.00',
+                    'tara': '10.00',
+                    'jabas': 5,
+                }
+            ],
+            'expectedRevision': report.updated_at.isoformat()
+        }
+        res_update = self.client.put('/reports/REP-DESC-001/', data=update_payload, format='json')
+        self.assertEqual(res_update.status_code, status.HTTP_200_OK)
+        report.refresh_from_db()
+        updated_general = json.loads(report.datosGenerales_json)
+        self.assertNotIn('pesoGuia', updated_general)
+        self.assertNotIn('diferenciaPeso', updated_general)
+
+

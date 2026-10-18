@@ -123,7 +123,16 @@ class ReportSerializer(serializers.ModelSerializer):
         if any(value > Decimal('99999999.99') for key, value in totals.items() if key != 'totalJabas') or totals['totalJabas'] > 2147483647:
             raise serializers.ValidationError({'registros': 'Los totales superan el límite permitido.'})
         totals['promedioPorJaba'] = (totals['totalPesoNeto'] / totals['totalJabas']).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if totals['totalJabas'] else Decimal('0')
-        if general.get('pesoGuia') not in (None, ''):
+        is_descarte = (
+            general.get('tipoReporte') == 'descarte'
+            or str(getattr(self.instance, 'lote', '')).startswith('DESC-')
+            or str(general.get('carga', '')).startswith('DESC-')
+            or str(general.get('lote', '')).startswith('DESC-')
+        )
+        if is_descarte:
+            general.pop('pesoGuia', None)
+            general.pop('diferenciaPeso', None)
+        elif general.get('pesoGuia') not in (None, ''):
             try:
                 peso_guia = Decimal(str(general['pesoGuia']))
                 if peso_guia.is_finite() and peso_guia >= 0:
@@ -207,7 +216,16 @@ class ReportSerializer(serializers.ModelSerializer):
             except:
                 totalJabas = 0
             
-            if datosGenerales.get('pesoGuia') not in (None, ''):
+            is_descarte = (
+                datosGenerales.get('tipoReporte') == 'descarte'
+                or str(lote).startswith('DESC-')
+                or str(datosGenerales.get('carga', '')).startswith('DESC-')
+                or str(datosGenerales.get('lote', '')).startswith('DESC-')
+            )
+            if is_descarte:
+                datosGenerales.pop('pesoGuia', None)
+                datosGenerales.pop('diferenciaPeso', None)
+            elif datosGenerales.get('pesoGuia') not in (None, ''):
                 try:
                     peso_guia = Decimal(str(datosGenerales['pesoGuia']))
                     if peso_guia.is_finite() and peso_guia >= 0:
@@ -370,6 +388,8 @@ class ReportListSerializer(serializers.ModelSerializer):
         if obj.datosGenerales_json:
             try:
                 data = json.loads(obj.datosGenerales_json)
+                if data.get('tipoReporte') == 'descarte' or str(obj.lote or '').startswith('DESC-') or str(data.get('carga') or '').startswith('DESC-') or str(data.get('lote') or '').startswith('DESC-'):
+                    return ''
                 val = data.get('pesoGuia')
                 return str(val) if val not in (None, '') else ''
             except Exception:
@@ -380,6 +400,8 @@ class ReportListSerializer(serializers.ModelSerializer):
         if obj.datosGenerales_json:
             try:
                 data = json.loads(obj.datosGenerales_json)
+                if data.get('tipoReporte') == 'descarte' or str(obj.lote or '').startswith('DESC-') or str(data.get('carga') or '').startswith('DESC-') or str(data.get('lote') or '').startswith('DESC-'):
+                    return ''
                 val = data.get('diferenciaPeso')
                 return str(val) if val not in (None, '') else ''
             except Exception:

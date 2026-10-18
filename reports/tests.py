@@ -769,5 +769,36 @@ class ReportTenantAndFilterTests(TestCase):
         self.assertNotIn('pesoGuia', data_after_clean)
         self.assertNotIn('diferenciaPeso', data_after_clean)
 
+    def test_cannot_create_descarte_from_another_descarte(self):
+        self.client.force_authenticate(user=self.user_ica)
+        # Attempt to create a descarte whose cargaOriginal is already a descarte
+        descarte_of_descarte_payload = {
+            'id': 'REP-DESC-NESTED',
+            'datosGenerales': {
+                'producto': 'Uva',
+                'carga': 'DESC-DESC-001',
+                'tipoReporte': 'descarte',
+                'cargaOriginal': 'DESC-CRG-001',
+            },
+            'registros': [
+                {
+                    'id': 'ROW-1',
+                    'pesoBruto': '50.00',
+                    'pesoParihuela': '5.00',
+                    'tara': '5.00',
+                    'jabas': 2,
+                }
+            ],
+            'totales': {
+                'totalPesoBruto': '50.00',
+                'totalPesoNeto': '40.00',
+                'totalJabas': 2,
+            }
+        }
+        res = self.client.post('/reports/', data=descarte_of_descarte_payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('No se puede registrar un descarte a partir de otro reporte de descarte.', str(res.data))
+
+
 
 

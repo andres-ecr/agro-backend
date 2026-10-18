@@ -223,6 +223,18 @@ class ReportSerializer(serializers.ModelSerializer):
                 or str(datosGenerales.get('lote', '')).startswith('DESC-')
             )
             if is_descarte:
+                carga_original = str(datosGenerales.get('cargaOriginal', '')).strip().upper()
+                if carga_original.startswith('DESC-'):
+                    raise serializers.ValidationError({'datosGenerales': 'No se puede registrar un descarte a partir de otro reporte de descarte.'})
+                if carga_original:
+                    padre = Report.objects.filter(lote=carga_original).first()
+                    if padre:
+                        try:
+                            padre_data = json.loads(padre.datosGenerales_json or '{}') if padre.datosGenerales_json else {}
+                        except Exception:
+                            padre_data = {}
+                        if padre_data.get('tipoReporte') == 'descarte' or str(padre.lote).startswith('DESC-'):
+                            raise serializers.ValidationError({'datosGenerales': 'No se puede registrar un descarte a partir de otro reporte de descarte.'})
                 datosGenerales.pop('pesoGuia', None)
                 datosGenerales.pop('diferenciaPeso', None)
             elif datosGenerales.get('pesoGuia') not in (None, ''):

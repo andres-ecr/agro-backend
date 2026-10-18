@@ -731,4 +731,43 @@ class ReportTenantAndFilterTests(TestCase):
         self.assertNotIn('pesoGuia', updated_general)
         self.assertNotIn('diferenciaPeso', updated_general)
 
+    def test_clean_descartes_command(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        # Manually create a corrupt legacy descarte report with pesoGuia and diferenciaPeso in JSON
+        legacy_data = {
+            'producto': 'Uva',
+            'carga': 'DESC-OLD-01',
+            'tipoReporte': 'descarte',
+            'pesoGuia': '800.00',
+            'diferenciaPeso': '-720.00',
+        }
+        corrupt_report = Report.objects.create(
+            id='REP-LEGACY-DESC',
+            tenant=self.tenant1,
+            campaign=self.camp_uva,
+            created_by=self.user_ica,
+            producto='Uva',
+            lote='DESC-OLD-01',
+            datosGenerales_json=json.dumps(legacy_data),
+            registros_json='[]',
+            totales_json='{}'
+        )
+
+        out = StringIO()
+        # Test dry-run
+        call_command('clean_descartes', dry_run=True, stdout=out)
+        corrupt_report.refresh_from_db()
+        data_after_dry = json.loads(corrupt_report.datosGenerales_json)
+        self.assertIn('pesoGuia', data_after_dry)
+
+        # Test actual run
+        call_command('clean_descartes', stdout=out)
+        corrupt_report.refresh_from_db()
+        data_after_clean = json.loads(corrupt_report.datosGenerales_json)
+        self.assertNotIn('pesoGuia', data_after_clean)
+        self.assertNotIn('diferenciaPeso', data_after_clean)
+
+
 

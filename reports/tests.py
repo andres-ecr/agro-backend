@@ -885,6 +885,13 @@ class ReportTenantAndFilterTests(TestCase):
         self.assertEqual(res_summary_after.data['total_reportes'], total_reportes_before)
         self.assertEqual(res_summary_after.data['total_peso_neto'], total_peso_before)
 
+        # 7. Check summary with tipo=descarte returns descarte statistics
+        res_summary_desc = self.client.get('/reports/summary/?tipo=descarte')
+        self.assertEqual(res_summary_desc.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_summary_desc.data['total_reportes'], 1)
+        self.assertEqual(res_summary_desc.data['total_peso_neto'], 180.0)
+        self.assertEqual(res_summary_desc.data['total_jabas'], 10)
+
 
 
 

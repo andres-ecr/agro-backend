@@ -355,7 +355,13 @@ class CampaignViewSet(viewsets.ModelViewSet):
         Totals, breakdown by producer, breakdown by variety, daily breakdown, and reports list.
         """
         campaign = self.get_object()
-        reports = campaign.reports.all().order_by('created_at')
+        reports = campaign.reports.exclude(
+            lote__startswith='DESC-'
+        ).exclude(
+            datosGenerales_json__icontains='"tipoReporte": "descarte"'
+        ).exclude(
+            datosGenerales_json__icontains='"tipoReporte":"descarte"'
+        ).order_by('created_at')
 
         from django.db.models import Sum, Count, Min, Max
         agg = reports.aggregate(

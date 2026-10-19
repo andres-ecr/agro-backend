@@ -694,8 +694,13 @@ class ReportTenantAndFilterTests(TestCase):
         self.assertNotIn('pesoGuia', general)
         self.assertNotIn('diferenciaPeso', general)
 
-        # In list serializer, peso_guia and diferencia_peso must be blank
-        res_list = self.client.get('/reports/')
+        # In default list serializer, descarte reports are excluded
+        res_list_default = self.client.get('/reports/')
+        self.assertEqual(res_list_default.status_code, status.HTTP_200_OK)
+        self.assertFalse(any(r['id'] == 'REP-DESC-001' for r in res_list_default.data['results']))
+
+        # When filtering by tipo=descarte, descarte is returned and peso_guia / diferencia_peso are blank
+        res_list = self.client.get('/reports/?tipo=descarte')
         self.assertEqual(res_list.status_code, status.HTTP_200_OK)
         item = next(r for r in res_list.data['results'] if r['id'] == 'REP-DESC-001')
         self.assertEqual(item['peso_guia'], '')
@@ -798,6 +803,87 @@ class ReportTenantAndFilterTests(TestCase):
         res = self.client.post('/reports/', data=descarte_of_descarte_payload, format='json')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('No se puede registrar un descarte a partir de otro reporte de descarte.', str(res.data))
+
+    def test_descarte_linked_in_parent_report_and_excluded_from_summary_and_campaign(self):
+        self.client.force_authenticate(user=self.user_ica)
+
+        # 1. Create parent report
+        parent = Report.objects.create(
+            id='REP-PARENT-01',
+            producto='Uva',
+            lote='CARGA-01',
+            tenant=self.tenant1,
+            campaign=self.camp_uva,
+            created_by=self.user_ica,
+            totalPesoBruto=Decimal('1000.00'),
+            totalPesoNeto=Decimal('900.00'),
+            totalJabas=50,
+            datosGenerales_json=json.dumps({
+                'producto': 'Uva',
+                'carga': 'CARGA-01',
+                'lote': 'CARGA-01',
+                'clp': 'CLP-01',
+            })
+        )
+
+        parent_id = parent.id
+        res_parent_before = self.client.get(f'/reports/{parent_id}/')
+        self.assertEqual(res_parent_before.status_code, status.HTTP_200_OK)
+        self.assertIsNone(res_parent_before.data.get('descarte'))
+
+        # 2. Summary before descarte
+        res_summary_before = self.client.get('/reports/summary/')
+        self.assertEqual(res_summary_before.status_code, status.HTTP_200_OK)
+        total_reportes_before = res_summary_before.data['total_reportes']
+        total_peso_before = res_summary_before.data['total_peso_neto']
+
+        # 3. Create descarte for parent
+        descarte_payload = {
+            'id': 'REP-DESC-LINKED',
+            'datosGenerales': {
+                'producto': 'Uva',
+                'carga': 'DESC-CARGA-01',
+                'tipoReporte': 'descarte',
+                'cargaOriginal': 'CARGA-01',
+                'reporteOrigenId': parent_id,
+            },
+            'registros': [
+                {
+                    'id': 'ROW-1',
+                    'pesoBruto': '200.00',
+                    'pesoParihuela': '10.00',
+                    'tara': '10.00',
+                    'jabas': 10,
+                }
+            ],
+            'totales': {
+                'totalPesoBruto': '200.00',
+                'totalPesoNeto': '180.00',
+                'totalJabas': 10,
+            }
+        }
+        res_create = self.client.post('/reports/', data=descarte_payload, format='json')
+        self.assertEqual(res_create.status_code, status.HTTP_201_CREATED)
+
+        # 4. Check parent report now exposes descarte field
+        res_parent_after = self.client.get(f'/reports/{parent_id}/')
+        self.assertEqual(res_parent_after.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(res_parent_after.data.get('descarte'))
+        self.assertEqual(res_parent_after.data['descarte']['id'], 'REP-DESC-LINKED')
+        self.assertEqual(res_parent_after.data['descarte']['lote'], 'DESC-CARGA-01')
+
+        # 5. Check descarte report detail
+        res_desc_detail = self.client.get('/reports/REP-DESC-LINKED/')
+        self.assertEqual(res_desc_detail.status_code, status.HTTP_200_OK)
+        self.assertTrue(res_desc_detail.data.get('isDescarte'))
+        self.assertEqual(res_desc_detail.data.get('reporteOrigenId'), parent_id)
+        self.assertIsNone(res_desc_detail.data.get('descarte'))
+
+        # 6. Check summary does not increase with descarte
+        res_summary_after = self.client.get('/reports/summary/')
+        self.assertEqual(res_summary_after.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_summary_after.data['total_reportes'], total_reportes_before)
+        self.assertEqual(res_summary_after.data['total_peso_neto'], total_peso_before)
 
 
 

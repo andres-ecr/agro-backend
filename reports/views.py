@@ -31,6 +31,36 @@ class ReportFilter(django_filters.FilterSet):
     tenant = django_filters.CharFilter(method='filter_tenant')
     
     campaign = django_filters.CharFilter(method='filter_campaign')
+    tipo = django_filters.CharFilter(method='filter_tipo')
+    reporte_origen = django_filters.CharFilter(method='filter_reporte_origen')
+
+    def filter_tipo(self, queryset, name, value):
+        val = str(value).lower().strip()
+        if val == 'descarte':
+            return queryset.filter(
+                Q(lote__startswith='DESC-') |
+                Q(datosGenerales_json__icontains='"tipoReporte": "descarte"') |
+                Q(datosGenerales_json__icontains='"tipoReporte":"descarte"')
+            )
+        elif val in ('principal', 'normal'):
+            return queryset.exclude(
+                lote__startswith='DESC-'
+            ).exclude(
+                datosGenerales_json__icontains='"tipoReporte": "descarte"'
+            ).exclude(
+                datosGenerales_json__icontains='"tipoReporte":"descarte"'
+            )
+        return queryset
+
+    def filter_reporte_origen(self, queryset, name, value):
+        val = str(value).strip()
+        return queryset.filter(
+            Q(datosGenerales_json__icontains=f'"reporteOrigenId": "{val}"') |
+            Q(datosGenerales_json__icontains=f'"reporteOrigenId":"{val}"') |
+            Q(datosGenerales_json__icontains=f'"cargaOriginal": "{val}"') |
+            Q(datosGenerales_json__icontains=f'"cargaOriginal":"{val}"') |
+            Q(lote=f"DESC-{val}")
+        )
 
     def filter_productor(self, queryset, name, value):
         """Filtrar por productor (búsqueda parcial en datosGenerales_json)"""
@@ -84,7 +114,8 @@ class ReportFilter(django_filters.FilterSet):
         model = Report
         fields = [
             'fecha_desde', 'fecha_hasta', 'lote', 'producto', 'productor', 'acopiador',
-            'placa', 'licencia', 'carga', 'clp', 'guia', 'guia_remision', 'tenant', 'campaign'
+            'placa', 'licencia', 'carga', 'clp', 'guia', 'guia_remision', 'tenant', 'campaign',
+            'tipo', 'reporte_origen'
         ]
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -146,6 +177,18 @@ class ReportViewSet(viewsets.ModelViewSet):
         else:
             # Plant admin or operator: strictly filter by user.tenant (cannot be overridden by header)
             queryset = queryset.filter(tenant=user.tenant)
+
+        # In list, summary, and dashboard_metrics, exclude descartes by default unless explicitly asked for tipo=descarte or tipo=all
+        if self.action in ['list', 'summary', 'dashboard_metrics']:
+            tipo = self.request.query_params.get('tipo')
+            if not tipo or tipo.lower() in ('principal', 'normal'):
+                queryset = queryset.exclude(
+                    lote__startswith='DESC-'
+                ).exclude(
+                    datosGenerales_json__icontains='"tipoReporte": "descarte"'
+                ).exclude(
+                    datosGenerales_json__icontains='"tipoReporte":"descarte"'
+                )
 
         return queryset
     

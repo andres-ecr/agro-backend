@@ -258,25 +258,34 @@ class CampaignSerializer(serializers.ModelSerializer):
             return obj.closed_by.get_full_name() or obj.closed_by.email
         return None
 
+    def _get_active_reports(self, obj):
+        return obj.reports.exclude(
+            lote__startswith='DESC-'
+        ).exclude(
+            datosGenerales_json__icontains='"tipoReporte": "descarte"'
+        ).exclude(
+            datosGenerales_json__icontains='"tipoReporte":"descarte"'
+        )
+
     def get_total_kilos(self, obj):
         if obj.status == 'closed' and obj.closed_summary:
             return obj.closed_summary.get('total_kilos_netos', 0.0)
-        val = obj.reports.aggregate(total=Sum('totalPesoNeto'))['total']
+        val = self._get_active_reports(obj).aggregate(total=Sum('totalPesoNeto'))['total']
         return float(val or 0.0)
 
     def get_total_jabas(self, obj):
         if obj.status == 'closed' and obj.closed_summary:
             return obj.closed_summary.get('total_jabas', 0)
-        val = obj.reports.aggregate(total=Sum('totalJabas'))['total']
+        val = self._get_active_reports(obj).aggregate(total=Sum('totalJabas'))['total']
         return int(val or 0)
 
     def get_total_cargas(self, obj):
         if obj.status == 'closed' and obj.closed_summary:
             return obj.closed_summary.get('total_cargas', 0)
-        return obj.reports.count()
+        return self._get_active_reports(obj).count()
 
     def get_reports_count(self, obj):
-        return obj.reports.count()
+        return self._get_active_reports(obj).count()
 
     def validate(self, attrs):
         product = attrs.get('product') or (self.instance.product if self.instance else None)

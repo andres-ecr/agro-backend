@@ -33,9 +33,48 @@ class ReportSerializer(serializers.ModelSerializer):
     tenant_name = serializers.ReadOnlyField(source='tenant.name')
     created_by_name = serializers.ReadOnlyField(source='created_by.get_full_name')
     campaign_name = serializers.ReadOnlyField(source='campaign.name')
+    descarte = serializers.SerializerMethodField()
 
     def get_revision(self, instance):
         return instance.updated_at.isoformat()
+
+    def get_descarte(self, obj):
+        if not obj or not obj.id:
+            return None
+        is_descarte = str(obj.lote or '').startswith('DESC-')
+        if not is_descarte and obj.datosGenerales_json:
+            try:
+                dg = json.loads(obj.datosGenerales_json)
+                if dg.get('tipoReporte') == 'descarte':
+                    is_descarte = True
+            except Exception:
+                pass
+        if is_descarte:
+            return None
+
+        from django.db.models import Q
+        q_filter = (
+            Q(lote=f"DESC-{obj.lote}") |
+            Q(datosGenerales_json__icontains=f'"reporteOrigenId": "{obj.id}"') |
+            Q(datosGenerales_json__icontains=f'"reporteOrigenId":{obj.id}') |
+            Q(datosGenerales_json__icontains=f'"reporteOrigenId": {obj.id}')
+        )
+        if obj.lote:
+            q_filter |= (
+                Q(datosGenerales_json__icontains=f'"cargaOriginal": "{obj.lote}"') |
+                Q(datosGenerales_json__icontains=f'"cargaOriginal":"{obj.lote}"')
+            )
+
+        desc = Report.objects.filter(q_filter).first()
+        if desc:
+            return {
+                'id': desc.id,
+                'lote': desc.lote,
+                'totalPesoNeto': str(desc.totalPesoNeto),
+                'totalJabas': desc.totalJabas,
+                'created_at': desc.created_at.isoformat() if desc.created_at else None,
+            }
+        return None
 
     def get_fields(self):
         fields = super().get_fields()
@@ -176,12 +215,12 @@ class ReportSerializer(serializers.ModelSerializer):
             'timestamp', 'incrementLote', 'status', 'created_at',
             'producto', 'lote', 'totalPesoBruto', 'totalPesoNeto', 'totalJabas',
             'tenant', 'tenant_name', 'campaign', 'campaign_name',
-            'created_by', 'created_by_name'
+            'created_by', 'created_by_name', 'descarte'
         )
         read_only_fields = [
             'created_at', 'producto', 'lote', 'totalPesoBruto', 'totalPesoNeto',
             'totalJabas', 'tenant', 'tenant_name', 'campaign', 'campaign_name',
-            'created_by', 'created_by_name'
+            'created_by', 'created_by_name', 'descarte'
         ]
     
     def create(self, validated_data):
@@ -298,6 +337,17 @@ class ReportSerializer(serializers.ModelSerializer):
             # Registrar el error para depuración
             print(f"Error al convertir JSON: {str(e)}")
             
+        if representation.get('datosGenerales'):
+            dg = representation['datosGenerales']
+            if dg.get('tipoReporte') == 'descarte' or str(instance.lote or '').startswith('DESC-'):
+                representation['isDescarte'] = True
+                representation['reporteOrigenId'] = dg.get('reporteOrigenId')
+                representation['cargaOriginal'] = dg.get('cargaOriginal')
+                if not representation['reporteOrigenId'] and representation['cargaOriginal']:
+                    padre = Report.objects.filter(lote=representation['cargaOriginal']).first()
+                    if padre:
+                        representation['reporteOrigenId'] = padre.id
+
         return representation
 
 class ReportListSerializer(serializers.ModelSerializer):
@@ -313,6 +363,8 @@ class ReportListSerializer(serializers.ModelSerializer):
     guia_remision = serializers.SerializerMethodField()
     peso_guia = serializers.SerializerMethodField()
     diferencia_peso = serializers.SerializerMethodField()
+    carga_original = serializers.SerializerMethodField()
+    reporte_origen_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
@@ -321,7 +373,8 @@ class ReportListSerializer(serializers.ModelSerializer):
             'totalPesoNeto', 'status', 'tenant', 'tenant_name',
             'campaign', 'campaign_name',
             'productor', 'productor_code', 'acopiador', 'placa', 'carga', 'tipo_reporte',
-            'clp', 'guia_remision', 'peso_guia', 'diferencia_peso'
+            'clp', 'guia_remision', 'peso_guia', 'diferencia_peso',
+            'carga_original', 'reporte_origen_id'
         )
 
     def get_productor(self, obj):
@@ -419,3 +472,21 @@ class ReportListSerializer(serializers.ModelSerializer):
             except Exception:
                 return ''
         return ''
+
+    def get_carga_original(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('cargaOriginal') or (obj.lote[5:] if str(obj.lote or '').startswith('DESC-') else '')
+            except Exception:
+                return obj.lote[5:] if str(obj.lote or '').startswith('DESC-') else ''
+        return obj.lote[5:] if str(obj.lote or '').startswith('DESC-') else ''
+
+    def get_reporte_origen_id(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('reporteOrigenId') or None
+            except Exception:
+                return None
+        return None

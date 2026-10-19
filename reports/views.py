@@ -136,7 +136,7 @@ class CanEditReport(BasePermission):
 
         # Viewer can only perform read actions
         if getattr(user, 'role', None) == 'viewer':
-            if view.action in ('list', 'retrieve', 'download', 'dashboard_metrics', 'test_filters'):
+            if view.action in ('list', 'retrieve', 'download', 'dashboard_metrics', 'test_filters', 'accounting_export'):
                 return True
             self.message = 'Los usuarios con rol visualizador solo tienen permisos de lectura.'
             return False
@@ -178,8 +178,8 @@ class ReportViewSet(viewsets.ModelViewSet):
             # Plant admin or operator: strictly filter by user.tenant (cannot be overridden by header)
             queryset = queryset.filter(tenant=user.tenant)
 
-        # In list, summary, and dashboard_metrics, exclude descartes by default unless explicitly asked for tipo=descarte or tipo=all
-        if self.action in ['list', 'summary', 'dashboard_metrics']:
+        # In list, summary, dashboard_metrics, and accounting_export, exclude descartes by default unless explicitly asked for tipo=descarte or tipo=all
+        if self.action in ['list', 'summary', 'dashboard_metrics', 'accounting_export']:
             tipo = self.request.query_params.get('tipo')
             if not tipo or tipo.lower() in ('principal', 'normal'):
                 queryset = queryset.exclude(
@@ -193,9 +193,19 @@ class ReportViewSet(viewsets.ModelViewSet):
         return queryset
     
     def get_serializer_class(self):
-        if self.action == 'list':
+        if self.action in ('list', 'accounting_export'):
             return ReportListSerializer
         return ReportSerializer
+
+    @action(detail=False, methods=['get'])
+    def accounting_export(self, request):
+        """
+        Listado completo sin truncar por paginación para el generador de reportes contables / Excel.
+        Aplica los filtros estándar (fecha_desde, fecha_hasta, campaign, producto, productor, tipo, tenant).
+        """
+        queryset = self.filter_queryset(self.get_queryset()).order_by('created_at')
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
     
     def create(self, request, *args, **kwargs):
         try:

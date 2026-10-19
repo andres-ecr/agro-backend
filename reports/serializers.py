@@ -365,16 +365,22 @@ class ReportListSerializer(serializers.ModelSerializer):
     diferencia_peso = serializers.SerializerMethodField()
     carga_original = serializers.SerializerMethodField()
     reporte_origen_id = serializers.SerializerMethodField()
+    variedad = serializers.SerializerMethodField()
+    fecha_cosecha = serializers.SerializerMethodField()
+    procedencia = serializers.SerializerMethodField()
+    transportista = serializers.SerializerMethodField()
+    fecha_emision = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
         fields = (
             'id', 'producto', 'lote', 'created_at', 
-            'totalPesoNeto', 'status', 'tenant', 'tenant_name',
+            'totalPesoBruto', 'totalPesoNeto', 'totalJabas', 'status', 'tenant', 'tenant_name',
             'campaign', 'campaign_name',
             'productor', 'productor_code', 'acopiador', 'placa', 'carga', 'tipo_reporte',
             'clp', 'guia_remision', 'peso_guia', 'diferencia_peso',
-            'carga_original', 'reporte_origen_id'
+            'carga_original', 'reporte_origen_id',
+            'variedad', 'fecha_cosecha', 'procedencia', 'transportista', 'fecha_emision'
         )
 
     def get_productor(self, obj):
@@ -490,3 +496,48 @@ class ReportListSerializer(serializers.ModelSerializer):
             except Exception:
                 return None
         return None
+
+    def get_variedad(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('variedad') or ''
+            except Exception:
+                return ''
+        return ''
+
+    def get_fecha_cosecha(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('fechaCosecha') or ''
+            except Exception:
+                return ''
+        return ''
+
+    def get_procedencia(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('distrito') or data.get('lugarProduccion') or data.get('procedencia') or ''
+            except Exception:
+                return ''
+        return ''
+
+    def get_transportista(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('empresaTransporte') or data.get('razonSocialTransporte') or data.get('datosTransporte') or ''
+            except Exception:
+                return ''
+        return ''
+
+    def get_fecha_emision(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('fechaEmisionGuia') or data.get('fechaGuia') or data.get('fechaRecepcion') or data.get('fecha') or ''
+            except Exception:
+                return ''
+        return ''

@@ -359,6 +359,32 @@ class ReportSerializer(serializers.ModelSerializer):
                     if padre:
                         representation['reporteOrigenId'] = padre.id
 
+        totales = representation.get('totales')
+        if isinstance(totales, dict):
+            try:
+                pb = Decimal(str(totales.get('totalPesoBruto', '0.0'))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                pp = Decimal(str(totales.get('totalPesoParihuela', '0.0'))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                tr = Decimal(str(totales.get('totalTara', '0.0'))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                if pb > 0 and (pp > 0 or tr > 0):
+                    expected_neto = max(Decimal('0.00'), pb - pp - tr).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    totales['totalPesoNeto'] = str(expected_neto)
+                    representation['totalPesoNeto'] = str(expected_neto)
+
+                    jabas = int(totales.get('totalJabas', 0) or 0)
+                    if jabas > 0:
+                        totales['promedioPorJaba'] = str((expected_neto / Decimal(jabas)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+
+                    dg = representation.get('datosGenerales')
+                    if isinstance(dg, dict) and dg.get('pesoGuia') not in (None, '') and dg.get('tipoReporte') != 'descarte':
+                        try:
+                            peso_guia = Decimal(str(dg['pesoGuia']))
+                            diff = (expected_neto - peso_guia).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            dg['diferenciaPeso'] = str(diff)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
         return representation
 
 class ReportListSerializer(serializers.ModelSerializer):
@@ -381,6 +407,7 @@ class ReportListSerializer(serializers.ModelSerializer):
     procedencia = serializers.SerializerMethodField()
     transportista = serializers.SerializerMethodField()
     fecha_emision = serializers.SerializerMethodField()
+    totalPesoNeto = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
@@ -478,12 +505,33 @@ class ReportListSerializer(serializers.ModelSerializer):
                 return ''
         return ''
 
+    def get_totalPesoNeto(self, obj):
+        if obj.totales_json:
+            try:
+                totales = json.loads(obj.totales_json)
+                pb = Decimal(str(totales.get('totalPesoBruto', '0.0'))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                pp = Decimal(str(totales.get('totalPesoParihuela', '0.0'))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                tr = Decimal(str(totales.get('totalTara', '0.0'))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                if pb > 0 and (pp > 0 or tr > 0):
+                    return Decimal(str(max(Decimal('0.00'), pb - pp - tr).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)))
+            except Exception:
+                pass
+        return obj.totalPesoNeto
+
     def get_diferencia_peso(self, obj):
         if obj.datosGenerales_json:
             try:
                 data = json.loads(obj.datosGenerales_json)
                 if data.get('tipoReporte') == 'descarte' or str(obj.lote or '').startswith('DESC-') or str(data.get('carga') or '').startswith('DESC-') or str(data.get('lote') or '').startswith('DESC-'):
                     return ''
+                if data.get('pesoGuia') not in (None, ''):
+                    try:
+                        peso_guia = Decimal(str(data['pesoGuia']))
+                        neto = self.get_totalPesoNeto(obj)
+                        if neto is not None:
+                            return str((Decimal(str(neto)) - peso_guia).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+                    except Exception:
+                        pass
                 val = data.get('diferenciaPeso')
                 return str(val) if val not in (None, '') else ''
             except Exception:

@@ -157,8 +157,8 @@ class ReportSerializer(serializers.ModelSerializer):
             row['pesoNeto'] = str(net)
             for total, key in [('totalPesoBruto', 'pesoBruto'), ('totalPesoParihuela', 'pesoParihuela'), ('totalTara', 'tara'), ('totalJabas', 'jabas')]:
                 totals[total] += amounts[key]
-            totals['totalPesoNeto'] += net
             normalized.append(row)
+        totals['totalPesoNeto'] = max(Decimal('0.00'), totals['totalPesoBruto'] - totals['totalPesoParihuela'] - totals['totalTara'])
         if any(value > Decimal('99999999.99') for key, value in totals.items() if key != 'totalJabas') or totals['totalJabas'] > 2147483647:
             raise serializers.ValidationError({'registros': 'Los totales superan el límite permitido.'})
         totals['promedioPorJaba'] = (totals['totalPesoNeto'] / totals['totalJabas']).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if totals['totalJabas'] else Decimal('0')
@@ -241,12 +241,12 @@ class ReportSerializer(serializers.ModelSerializer):
             
             # Convertir a tipos adecuados
             try:
-                totalPesoBruto = Decimal(totalPesoBruto)
+                totalPesoBruto = Decimal(str(totalPesoBruto)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             except:
                 totalPesoBruto = Decimal('0.0')
                 
             try:
-                totalPesoNeto = Decimal(totalPesoNeto)
+                totalPesoNeto = Decimal(str(totalPesoNeto)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             except:
                 totalPesoNeto = Decimal('0.0')
                 
@@ -254,6 +254,17 @@ class ReportSerializer(serializers.ModelSerializer):
                 totalJabas = int(totalJabas)
             except:
                 totalJabas = 0
+
+            # Garantizar que totalPesoNeto satisfaga la ecuación contable si existen totales de tara y parihuela
+            try:
+                totalPesoParihuela = Decimal(str(totales.get('totalPesoParihuela', '0.0'))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                totalTara = Decimal(str(totales.get('totalTara', '0.0'))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                if totalPesoBruto > 0 and (totalPesoParihuela > 0 or totalTara > 0):
+                    expected_neto = max(Decimal('0.00'), totalPesoBruto - totalPesoParihuela - totalTara)
+                    totalPesoNeto = expected_neto
+                    totales['totalPesoNeto'] = str(expected_neto)
+            except Exception:
+                pass
             
             is_descarte = (
                 datosGenerales.get('tipoReporte') == 'descarte'

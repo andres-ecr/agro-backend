@@ -892,6 +892,68 @@ class ReportTenantAndFilterTests(TestCase):
         self.assertEqual(res_summary_desc.data['total_peso_neto'], 180.0)
         self.assertEqual(res_summary_desc.data['total_jabas'], 10)
 
+    def test_latest_lotes_reference_by_product(self):
+        self.client.force_authenticate(user=self.user_ica)
+        # Create reports for different products
+        Report.objects.create(
+            id='REP-UVA-1',
+            tenant=self.tenant1,
+            producto='UVA',
+            lote='UI-354',
+            datosGenerales_json=json.dumps({'producto': 'UVA', 'carga': 'UI-354'}),
+            totalPesoNeto=Decimal('100.00'),
+            totalJabas=10,
+        )
+        Report.objects.create(
+            id='REP-UVA-2',
+            tenant=self.tenant1,
+            producto='UVA',
+            lote='UI-355',
+            datosGenerales_json=json.dumps({'producto': 'UVA', 'carga': 'UI-355'}),
+            totalPesoNeto=Decimal('200.00'),
+            totalJabas=20,
+        )
+        Report.objects.create(
+            id='REP-GRANADA-1',
+            tenant=self.tenant1,
+            producto='GRANADA',
+            lote='GI-010',
+            datosGenerales_json=json.dumps({'producto': 'GRANADA', 'carga': 'GI-010'}),
+            totalPesoNeto=Decimal('150.00'),
+            totalJabas=15,
+        )
+        # Create a descarte which must NOT be returned as latest normal carga
+        Report.objects.create(
+            id='REP-DESC-UVA',
+            tenant=self.tenant1,
+            producto='UVA',
+            lote='DESC-UI-355',
+            datosGenerales_json=json.dumps({'producto': 'UVA', 'carga': 'DESC-UI-355', 'tipoReporte': 'descarte'}),
+            totalPesoNeto=Decimal('20.00'),
+            totalJabas=2,
+        )
+
+        res = self.client.get('/reports/latest_lotes/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('UVA', res.data)
+        self.assertEqual(res.data['UVA']['carga'], 'UI-355')
+        self.assertIn('GRANADA', res.data)
+        self.assertEqual(res.data['GRANADA']['carga'], 'GI-010')
+
+        # Test filter by single product
+        res_uva = self.client.get('/reports/latest_lotes/?producto=uva')
+        self.assertEqual(res_uva.status_code, status.HTTP_200_OK)
+        self.assertIn('UVA', res_uva.data)
+        self.assertEqual(res_uva.data['UVA']['carga'], 'UI-355')
+        self.assertNotIn('GRANADA', res_uva.data)
+
+        # Test that summary includes latest_lotes mapping
+        res_summary = self.client.get('/reports/summary/')
+        self.assertEqual(res_summary.status_code, status.HTTP_200_OK)
+        self.assertIn('latest_lotes', res_summary.data)
+        self.assertEqual(res_summary.data['latest_lotes'].get('UVA'), 'UI-355')
+        self.assertEqual(res_summary.data['latest_lotes'].get('GRANADA'), 'GI-010')
+
 
 
 

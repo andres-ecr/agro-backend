@@ -292,8 +292,80 @@ class ReportViewSet(viewsets.ModelViewSet):
         stats['total_peso_neto'] = float(stats['total_peso_neto'] or 0)
         stats['total_jabas'] = stats['total_jabas'] or 0
         stats['promedio_reporte'] = float(promedio_reporte)
+
+        # Ultimos lotes por producto para referencia rápida
+        recent = queryset.only('id', 'producto', 'lote', 'datosGenerales_json', 'created_at')[:50]
+        latest_lotes = {}
+        for r in recent:
+            p = (r.producto or '').strip().upper()
+            if not p or p in latest_lotes:
+                continue
+            carga = r.lote or ''
+            if r.datosGenerales_json:
+                try:
+                    dg = json.loads(r.datosGenerales_json)
+                    carga = dg.get('carga') or r.lote or ''
+                except Exception:
+                    pass
+            if carga and not str(carga).startswith('DESC-'):
+                latest_lotes[p] = carga
+        stats['latest_lotes'] = latest_lotes
         
         return Response(stats)
+
+    @action(detail=False, methods=['get'])
+    def latest_lotes(self, request):
+        """
+        Devuelve el último lote/carga registrado por producto para tener referencia
+        en pantallas pequeñas o durante el registro manual de recepciones.
+        """
+        queryset = self.get_queryset()
+        producto = request.query_params.get('producto')
+        if producto:
+            queryset = queryset.filter(producto__iexact=producto.strip())
+
+        latest_by_product = {}
+        recent = queryset.only('id', 'producto', 'lote', 'datosGenerales_json', 'created_at')[:100]
+        for r in recent:
+            p = (r.producto or '').strip().upper()
+            if not p or p in latest_by_product:
+                continue
+            carga = r.lote or ''
+            if r.datosGenerales_json:
+                try:
+                    dg = json.loads(r.datosGenerales_json)
+                    carga = dg.get('carga') or r.lote or ''
+                except Exception:
+                    pass
+            if carga and not str(carga).startswith('DESC-'):
+                latest_by_product[p] = {
+                    'producto': p,
+                    'carga': carga,
+                    'lote': r.lote,
+                    'created_at': r.created_at,
+                }
+
+        if producto:
+            p_clean = producto.strip().upper()
+            if p_clean not in latest_by_product:
+                single = queryset.filter(producto__iexact=producto.strip()).first()
+                if single:
+                    carga = single.lote or ''
+                    if single.datosGenerales_json:
+                        try:
+                            dg = json.loads(single.datosGenerales_json)
+                            carga = dg.get('carga') or single.lote or ''
+                        except Exception:
+                            pass
+                    if carga and not str(carga).startswith('DESC-'):
+                        latest_by_product[p_clean] = {
+                            'producto': p_clean,
+                            'carga': carga,
+                            'lote': single.lote,
+                            'created_at': single.created_at,
+                        }
+
+        return Response(latest_by_product)
 
     @action(detail=False, methods=['get'])
     def dashboard_metrics(self, request):

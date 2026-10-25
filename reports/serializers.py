@@ -2,6 +2,7 @@
 from rest_framework import serializers
 from .models import Report, Responsable
 import json
+import re
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import date, time, datetime, timedelta
 from django.db import transaction
@@ -408,6 +409,7 @@ class ReportListSerializer(serializers.ModelSerializer):
     transportista = serializers.SerializerMethodField()
     fecha_emision = serializers.SerializerMethodField()
     totalPesoNeto = serializers.SerializerMethodField()
+    categoria = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
@@ -415,7 +417,7 @@ class ReportListSerializer(serializers.ModelSerializer):
             'id', 'producto', 'lote', 'created_at', 
             'totalPesoBruto', 'totalPesoNeto', 'totalJabas', 'status', 'tenant', 'tenant_name',
             'campaign', 'campaign_name',
-            'productor', 'productor_code', 'acopiador', 'placa', 'carga', 'tipo_reporte',
+            'productor', 'productor_code', 'acopiador', 'placa', 'carga', 'categoria', 'tipo_reporte',
             'clp', 'guia_remision', 'peso_guia', 'diferencia_peso',
             'carga_original', 'reporte_origen_id',
             'variedad', 'fecha_cosecha', 'procedencia', 'transportista', 'fecha_emision'
@@ -465,6 +467,24 @@ class ReportListSerializer(serializers.ModelSerializer):
             except Exception:
                 return obj.lote or ''
         return obj.lote or ''
+
+    def get_categoria(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                val = data.get('categoria')
+                if val not in (None, ''):
+                    try:
+                        return int(val)
+                    except (ValueError, TypeError):
+                        pass
+                carga_str = str(data.get('carga') or obj.lote or '')
+                match = re.search(r'\bCAT\s*(\d+)', carga_str, re.IGNORECASE)
+                if match:
+                    return int(match.group(1))
+            except Exception:
+                pass
+        return 1
 
     def get_tipo_reporte(self, obj):
         if obj.datosGenerales_json:

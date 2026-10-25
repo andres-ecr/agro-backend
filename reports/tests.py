@@ -624,6 +624,7 @@ class ReportTenantAndFilterTests(TestCase):
         self.assertEqual(item['guia_remision'], 'TGR-0099')
         self.assertEqual(item['peso_guia'], '200.00')
         self.assertEqual(item['diferencia_peso'], '50.00')
+        self.assertEqual(item['categoria'], 1)
 
         # Verify filter by guia
         res_filter = self.client.get('/reports/?guia=0099')

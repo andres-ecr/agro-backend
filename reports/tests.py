@@ -625,6 +625,18 @@ class ReportTenantAndFilterTests(TestCase):
         self.assertEqual(item['peso_guia'], '200.00')
         self.assertEqual(item['diferencia_peso'], '50.00')
         self.assertEqual(item['categoria'], 1)
+        self.assertEqual(item['observaciones'], '')
+
+        # Test truck code string categoria (Casma CX-000)
+        dg = json.loads(report.datosGenerales_json)
+        dg['categoria'] = 'C1-001'
+        dg['observaciones'] = 'Chofer reporta 2 jabas rotas'
+        report.datosGenerales_json = json.dumps(dg)
+        report.save()
+        res_truck = self.client.get('/reports/')
+        item_truck = next(r for r in res_truck.data['results'] if r['id'] == 'REP-GUIA-001')
+        self.assertEqual(item_truck['categoria'], 'C1-001')
+        self.assertEqual(item_truck['observaciones'], 'Chofer reporta 2 jabas rotas')
 
         # Verify filter by guia
         res_filter = self.client.get('/reports/?guia=0099')

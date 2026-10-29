@@ -410,6 +410,7 @@ class ReportListSerializer(serializers.ModelSerializer):
     fecha_emision = serializers.SerializerMethodField()
     totalPesoNeto = serializers.SerializerMethodField()
     categoria = serializers.SerializerMethodField()
+    observaciones = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
@@ -420,7 +421,8 @@ class ReportListSerializer(serializers.ModelSerializer):
             'productor', 'productor_code', 'acopiador', 'placa', 'carga', 'categoria', 'tipo_reporte',
             'clp', 'guia_remision', 'peso_guia', 'diferencia_peso',
             'carga_original', 'reporte_origen_id',
-            'variedad', 'fecha_cosecha', 'procedencia', 'transportista', 'fecha_emision'
+            'variedad', 'fecha_cosecha', 'procedencia', 'transportista', 'fecha_emision',
+            'observaciones'
         )
 
     def get_productor(self, obj):
@@ -477,7 +479,7 @@ class ReportListSerializer(serializers.ModelSerializer):
                     try:
                         return int(val)
                     except (ValueError, TypeError):
-                        pass
+                        return str(val).strip().upper()
                 carga_str = str(data.get('carga') or obj.lote or '')
                 match = re.search(r'\bCAT\s*(\d+)', carga_str, re.IGNORECASE)
                 if match:
@@ -485,6 +487,15 @@ class ReportListSerializer(serializers.ModelSerializer):
             except Exception:
                 pass
         return 1
+
+    def get_observaciones(self, obj):
+        if obj.datosGenerales_json:
+            try:
+                data = json.loads(obj.datosGenerales_json)
+                return data.get('observaciones') or data.get('observacion') or ''
+            except Exception:
+                return ''
+        return ''
 
     def get_tipo_reporte(self, obj):
         if obj.datosGenerales_json:

@@ -149,6 +149,32 @@ class CanEditReport(BasePermission):
         return True
 
 
+def find_matching_clp(datos_generales, tenant=None):
+    """Localiza el registro de ProducerCLP para descontar o restituir saldo de cupo SENASA"""
+    from producers.models import ProducerCLP
+    clp_code = (datos_generales.get('clp') or datos_generales.get('codigoClp') or '').strip()
+    if not clp_code:
+        return None
+
+    qs = ProducerCLP.objects.filter(code__iexact=clp_code)
+    productor_code = (datos_generales.get('productorCode') or datos_generales.get('codigoProductor') or '').strip()
+    productor_name = (datos_generales.get('productor') or '').strip()
+
+    if productor_code:
+        match = qs.filter(producer__code=productor_code).first()
+        if match:
+            return match
+    if productor_name:
+        match = qs.filter(producer__name__iexact=productor_name).first()
+        if match:
+            return match
+    if tenant:
+        match = qs.filter(producer__tenant=tenant).first()
+        if match:
+            return match
+    return qs.first()
+
+
 class ReportViewSet(viewsets.ModelViewSet):
     queryset = Report.objects.all()
     serializer_class = ReportSerializer
@@ -257,11 +283,55 @@ class ReportViewSet(viewsets.ModelViewSet):
                 f"No se puede registrar el pesaje: No existe una campaña activa para el producto '{producto_nombre}' en esta sede. Contacte al administrador de planta para abrir la campaña."
             )
 
-        serializer.save(
+        report = serializer.save(
             created_by=user,
             tenant=tenant,
             campaign=campaign
         )
+
+        # Deducción de saldo de tonelaje SENASA del CLP (siempre que no sea descarte)
+        if not reporte_origen_id and report.totalPesoNeto:
+            clp_obj = find_matching_clp(datos_generales, tenant)
+            if clp_obj:
+                peso_neto = Decimal(str(report.totalPesoNeto))
+                clp_obj.tonelaje_saldo = (clp_obj.tonelaje_saldo or Decimal('0')) - peso_neto
+                clp_obj.save(update_fields=['tonelaje_saldo'])
+
+    def perform_update(self, serializer):
+        old_instance = self.get_object()
+        old_peso = Decimal(str(old_instance.totalPesoNeto or 0))
+        new_instance = serializer.save()
+        new_peso = Decimal(str(new_instance.totalPesoNeto or 0))
+
+        delta = old_peso - new_peso
+        if delta != Decimal('0'):
+            datos_generales = {}
+            if new_instance.datosGenerales_json:
+                try:
+                    datos_generales = json.loads(new_instance.datosGenerales_json)
+                except Exception:
+                    pass
+            if not datos_generales.get('reporteOrigenId'):
+                clp_obj = find_matching_clp(datos_generales, new_instance.tenant)
+                if clp_obj:
+                    clp_obj.tonelaje_saldo = (clp_obj.tonelaje_saldo or Decimal('0')) + delta
+                    clp_obj.save(update_fields=['tonelaje_saldo'])
+
+    def perform_destroy(self, instance):
+        if instance.totalPesoNeto:
+            datos_generales = {}
+            if instance.datosGenerales_json:
+                try:
+                    datos_generales = json.loads(instance.datosGenerales_json)
+                except Exception:
+                    pass
+            if not datos_generales.get('reporteOrigenId'):
+                clp_obj = find_matching_clp(datos_generales, instance.tenant)
+                if clp_obj:
+                    peso_neto = Decimal(str(instance.totalPesoNeto))
+                    clp_obj.tonelaje_saldo = (clp_obj.tonelaje_saldo or Decimal('0')) + peso_neto
+                    clp_obj.save(update_fields=['tonelaje_saldo'])
+        instance.delete()
     
     @action(detail=False, methods=['get'])
     def summary(self, request):

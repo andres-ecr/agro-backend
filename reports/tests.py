@@ -970,3 +970,42 @@ class ReportTenantAndFilterTests(TestCase):
 
 
 
+
+    def test_clp_tonelaje_saldo_reception_deduction_and_reimbursement(self):
+        from producers.models import Producer, ProducerCLP
+        self.client.force_authenticate(user=self.user_ica)
+
+        # 1. Setup Producer and CLP with 10,000 kg quota
+        prod = Producer.objects.create(code='PROD-SENASA-1', name='Don Senasa', tenant=self.tenant1)
+        clp = ProducerCLP.objects.create(producer=prod, code='CLP-SENASA-99', tonelaje_total=Decimal('10000.00'), tonelaje_saldo=Decimal('10000.00'))
+
+        # 2. Create reception with matching CLP and 2,500 kg net weight
+        payload = {
+            'id': 'REP-CLP-DEDUCT-1',
+            'producto': 'Uva',
+            'lote': 'CLP-001',
+            'datosGenerales': {
+                'producto': 'Uva',
+                'carga': 'CLP-001',
+                'productor': 'Don Senasa',
+                'productorCode': 'PROD-SENASA-1',
+                'clp': 'CLP-SENASA-99',
+            },
+            'registros': [
+                {'id': 'ROW-1', 'pesoBruto': '2600.00', 'pesoParihuela': '50.00', 'tara': '50.00', 'pesoJaba': '0.0', 'jabas': 0}
+            ],
+            'totales': {'totalPesoNeto': 2500.00, 'totalJabas': 0},
+            'status': 'completed'
+        }
+        res = self.client.post('/reports/', data=payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        clp.refresh_from_db()
+        self.assertEqual(float(clp.tonelaje_saldo), 7500.00)
+
+        # 3. Authenticate as admin to delete report and check refund
+        admin_user = User.objects.create_user(email='admin_refund@agro.com', role='admin', tenant=self.tenant1)
+        self.client.force_authenticate(user=admin_user)
+        del_res = self.client.delete('/reports/REP-CLP-DEDUCT-1/')
+        self.assertEqual(del_res.status_code, status.HTTP_204_NO_CONTENT)
+        clp.refresh_from_db()
+        self.assertEqual(float(clp.tonelaje_saldo), 10000.00)

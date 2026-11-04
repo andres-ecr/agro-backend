@@ -53,6 +53,21 @@ class ProducerCLP(models.Model):
     lugar_produccion = models.CharField(max_length=200, blank=True, null=True, verbose_name="Lugar de Producción")
     distrito = models.CharField(max_length=100, blank=True, null=True, verbose_name="Distrito")
     is_active = models.BooleanField(default=True, verbose_name="Activo")
+    
+    # Control de Tonelaje / Cupo SENASA por Lugar de Producción (en KG)
+    tonelaje_total = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        verbose_name="Tonelaje Total Autorizado (KG)"
+    )
+    tonelaje_saldo = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        verbose_name="Saldo Restante CLP (KG)"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Fecha de actualización")
 
@@ -61,6 +76,13 @@ class ProducerCLP(models.Model):
         verbose_name = "CLP de Productor"
         verbose_name_plural = "CLPs de Productores"
 
+    @property
+    def tonelaje_total_tn(self):
+        return round(float(self.tonelaje_total or 0) / 1000.0, 3)
+
+    @property
+    def tonelaje_saldo_tn(self):
+        return round(float(self.tonelaje_saldo or 0) / 1000.0, 3)
+
     def __str__(self):
         return f"{self.producer.name} - CLP: {self.code}"
-

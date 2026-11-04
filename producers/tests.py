@@ -77,3 +77,65 @@ class ProducerCLPTests(TestCase):
         self.assertEqual(len(item['clp_list']), 1)
         self.assertEqual(item['clp_list'][0]['code'], 'CLP-VH1')
         self.assertEqual(item['clp_list'][0]['distrito'], 'Pachacutec')
+
+    def test_clp_tonnage_quota_initialization_and_admin_vs_operator_permissions(self):
+        # 1. Operator creates producer with CLP and total tonnage
+        operator = User.objects.create_user(
+            email='op_prod@agro.com', password='password123', role='operator'
+        )
+        self.client.force_authenticate(user=operator)
+        payload = {
+            'code': 'PROD-OP-1',
+            'name': 'Fundo Operator',
+            'clp_list': [
+                {'code': 'CLP-OP-1', 'lugar_produccion': 'Lote 1', 'distrito': 'Ica', 'tonelaje_total': 50000}
+            ]
+        }
+        res = self.client.post('/producers/', data=payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        clp = ProducerCLP.objects.get(code='CLP-OP-1')
+        self.assertEqual(float(clp.tonelaje_total), 50000.0)
+        # Saldo automatically initialized to total
+        self.assertEqual(float(clp.tonelaje_saldo), 50000.0)
+        self.assertEqual(clp.tonelaje_total_tn, 50.0)
+        self.assertEqual(clp.tonelaje_saldo_tn, 50.0)
+
+        # 2. Operator attempts to tamper directly with saldo_restante -> ignored
+        update_payload = {
+            'code': 'PROD-OP-1',
+            'name': 'Fundo Operator',
+            'clp_list': [
+                {'id': clp.id, 'code': 'CLP-OP-1', 'tonelaje_total': 50000, 'tonelaje_saldo': 999999}
+            ]
+        }
+        res_update = self.client.put(f"/producers/{clp.producer_id}/", data=update_payload, format='json')
+        self.assertEqual(res_update.status_code, status.HTTP_200_OK)
+        clp.refresh_from_db()
+        self.assertEqual(float(clp.tonelaje_saldo), 50000.0)
+
+        # 3. Operator increases total (ampliacion de cupo SENASA) -> delta applies to saldo
+        ampliacion_payload = {
+            'code': 'PROD-OP-1',
+            'name': 'Fundo Operator',
+            'clp_list': [
+                {'id': clp.id, 'code': 'CLP-OP-1', 'tonelaje_total': 70000}
+            ]
+        }
+        self.client.put(f"/producers/{clp.producer_id}/", data=ampliacion_payload, format='json')
+        clp.refresh_from_db()
+        self.assertEqual(float(clp.tonelaje_total), 70000.0)
+        self.assertEqual(float(clp.tonelaje_saldo), 70000.0)
+
+        # 4. Admin edits saldo directly (for manual corrections)
+        self.client.force_authenticate(user=self.user)
+        admin_payload = {
+            'code': 'PROD-OP-1',
+            'name': 'Fundo Operator',
+            'clp_list': [
+                {'id': clp.id, 'code': 'CLP-OP-1', 'tonelaje_total': 70000, 'tonelaje_saldo': 42000.50}
+            ]
+        }
+        res_admin = self.client.put(f"/producers/{clp.producer_id}/", data=admin_payload, format='json')
+        self.assertEqual(res_admin.status_code, status.HTTP_200_OK)
+        clp.refresh_from_db()
+        self.assertEqual(float(clp.tonelaje_saldo), 42000.50)

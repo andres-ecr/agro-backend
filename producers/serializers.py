@@ -90,10 +90,12 @@ class ProducerSerializer(serializers.ModelSerializer):
             # Inicializar saldo si es nuevo asegurando parsing limpio de miles y decimales
             total_val = parse_decimal_kg(clean_item.get('tonelaje_total'))
             clean_item['tonelaje_total'] = total_val
-            if 'tonelaje_saldo' not in clean_item or not is_admin:
+            saldo_val = parse_decimal_kg(clean_item.get('tonelaje_saldo')) if 'tonelaje_saldo' in clean_item else Decimal('0')
+            # Si el saldo restante es 0 o no es admin, hereda automáticamente el saldo total
+            if not is_admin or saldo_val == Decimal('0'):
                 clean_item['tonelaje_saldo'] = total_val
             else:
-                clean_item['tonelaje_saldo'] = parse_decimal_kg(clean_item['tonelaje_saldo'], total_val)
+                clean_item['tonelaje_saldo'] = saldo_val
             ProducerCLP.objects.create(producer=producer, **clean_item)
             
         # Si tiene campo clp legacy pero no clp_list, sincronizar creando un CLP
@@ -133,12 +135,20 @@ class ProducerSerializer(serializers.ModelSerializer):
                     if is_admin:
                         # Admins can manually override tonelaje_saldo
                         if 'tonelaje_saldo' in item and item['tonelaje_saldo'] is not None:
-                            clp_obj.tonelaje_saldo = parse_decimal_kg(item['tonelaje_saldo'], old_saldo)
+                            given_saldo = parse_decimal_kg(item['tonelaje_saldo'], old_saldo)
+                            # Si se define un saldo total y el saldo restante es 0, igualar al total
+                            if (old_saldo == Decimal('0') or given_saldo == Decimal('0')) and new_total > Decimal('0') and given_saldo == Decimal('0'):
+                                clp_obj.tonelaje_saldo = new_total
+                            else:
+                                clp_obj.tonelaje_saldo = given_saldo
                     else:
-                        # Non-admins: if total changed (extension), apply delta to remaining balance
-                        delta = new_total - old_total
-                        if delta != Decimal('0'):
-                            clp_obj.tonelaje_saldo = max(Decimal('0'), old_saldo + delta)
+                        # Non-admins: if total was 0, default saldo to new total; otherwise apply delta
+                        if old_total == Decimal('0') and old_saldo == Decimal('0') and new_total > Decimal('0'):
+                            clp_obj.tonelaje_saldo = new_total
+                        else:
+                            delta = new_total - old_total
+                            if delta != Decimal('0'):
+                                clp_obj.tonelaje_saldo = max(Decimal('0'), old_saldo + delta)
 
                     clp_obj.save()
                     updated_ids.add(clp_id)
@@ -146,10 +156,12 @@ class ProducerSerializer(serializers.ModelSerializer):
                     clean_item = {k: v for k, v in item.items() if k != 'id'}
                     total_val = parse_decimal_kg(clean_item.get('tonelaje_total'))
                     clean_item['tonelaje_total'] = total_val
-                    if 'tonelaje_saldo' not in clean_item or not is_admin:
+                    saldo_val = parse_decimal_kg(clean_item.get('tonelaje_saldo')) if 'tonelaje_saldo' in clean_item else Decimal('0')
+                    # Si el saldo restante es 0 o no es admin, hereda automáticamente el saldo total
+                    if not is_admin or saldo_val == Decimal('0'):
                         clean_item['tonelaje_saldo'] = total_val
                     else:
-                        clean_item['tonelaje_saldo'] = parse_decimal_kg(clean_item['tonelaje_saldo'], total_val)
+                        clean_item['tonelaje_saldo'] = saldo_val
                     new_clp = ProducerCLP.objects.create(producer=instance, **clean_item)
                     updated_ids.add(new_clp.id)
 

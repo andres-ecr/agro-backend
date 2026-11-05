@@ -169,3 +169,33 @@ class ProducerCLPTests(TestCase):
         clp2 = ProducerCLP.objects.get(code='CLP-EX-2')
         self.assertEqual(float(clp2.tonelaje_total), 100000.0)
         self.assertEqual(float(clp2.tonelaje_saldo), 50000.50)
+
+    def test_clp_saldo_defaults_to_total_when_zero_or_empty(self):
+        """Verifica que si el saldo restante es 0 o no se especifica, se iguale al total a menos que se indique un saldo específico"""
+        self.client.force_authenticate(user=self.user)
+        payload = {
+            'code': 'PROD-AUTO-SALDO',
+            'name': 'Fundo Auto Saldo',
+            'clp_list': [
+                {
+                    'code': 'CLP-AUTO-1',
+                    'tonelaje_total': '100,000',
+                    'tonelaje_saldo': '0'  # Ponen 0 -> debe heredar 100,000
+                },
+                {
+                    'code': 'CLP-AUTO-2',
+                    'tonelaje_total': '80,000',
+                    'tonelaje_saldo': '30,000'  # Saldo específico -> se respeta 30,000
+                }
+            ]
+        }
+        res = self.client.post('/producers/', data=payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+
+        clp1 = ProducerCLP.objects.get(code='CLP-AUTO-1')
+        self.assertEqual(float(clp1.tonelaje_total), 100000.0)
+        self.assertEqual(float(clp1.tonelaje_saldo), 100000.0)
+
+        clp2 = ProducerCLP.objects.get(code='CLP-AUTO-2')
+        self.assertEqual(float(clp2.tonelaje_total), 80000.0)
+        self.assertEqual(float(clp2.tonelaje_saldo), 30000.0)

@@ -91,8 +91,13 @@ class ProducerSerializer(serializers.ModelSerializer):
             total_val = parse_decimal_kg(clean_item.get('tonelaje_total'))
             clean_item['tonelaje_total'] = total_val
             saldo_val = parse_decimal_kg(clean_item.get('tonelaje_saldo')) if 'tonelaje_saldo' in clean_item else Decimal('0')
-            # Si el saldo restante es 0 o no es admin, hereda automáticamente el saldo total
-            if not is_admin or saldo_val == Decimal('0'):
+            is_custom = clean_item.pop('is_custom_saldo', False) or clean_item.pop('_customSaldo', False)
+            # Si el saldo restante es 0 o no es admin, hereda automáticamente el saldo total salvo que sea personalizado
+            if not is_admin:
+                clean_item['tonelaje_saldo'] = total_val
+            elif is_custom:
+                clean_item['tonelaje_saldo'] = saldo_val
+            elif saldo_val == Decimal('0') and total_val > Decimal('0'):
                 clean_item['tonelaje_saldo'] = total_val
             else:
                 clean_item['tonelaje_saldo'] = saldo_val
@@ -126,8 +131,10 @@ class ProducerSerializer(serializers.ModelSerializer):
 
                     new_total = parse_decimal_kg(item.get('tonelaje_total', old_total), old_total)
 
+                    is_custom_saldo = item.get('is_custom_saldo', False) or item.get('_customSaldo', False)
+
                     for attr, val in item.items():
-                        if attr not in ('id', 'tonelaje_saldo', 'tonelaje_total'):
+                        if attr not in ('id', 'tonelaje_saldo', 'tonelaje_total', 'is_custom_saldo', '_customSaldo'):
                             setattr(clp_obj, attr, val)
                     
                     clp_obj.tonelaje_total = new_total
@@ -136,8 +143,11 @@ class ProducerSerializer(serializers.ModelSerializer):
                         # Admins can manually override tonelaje_saldo
                         if 'tonelaje_saldo' in item and item['tonelaje_saldo'] is not None:
                             given_saldo = parse_decimal_kg(item['tonelaje_saldo'], old_saldo)
-                            # Si se define un saldo total y el saldo restante es 0, igualar al total
-                            if (old_saldo == Decimal('0') or given_saldo == Decimal('0')) and new_total > Decimal('0') and given_saldo == Decimal('0'):
+                            # Si se especificó o calculó un saldo personalizado explícito, respetarlo siempre
+                            if is_custom_saldo:
+                                clp_obj.tonelaje_saldo = given_saldo
+                            # Si no es personalizado y ponen saldo restante 0 con total > 0 y el saldo anterior era 0, igualar al total
+                            elif (old_saldo == Decimal('0') or given_saldo == Decimal('0')) and new_total > Decimal('0') and given_saldo == Decimal('0'):
                                 clp_obj.tonelaje_saldo = new_total
                             else:
                                 clp_obj.tonelaje_saldo = given_saldo
@@ -157,8 +167,13 @@ class ProducerSerializer(serializers.ModelSerializer):
                     total_val = parse_decimal_kg(clean_item.get('tonelaje_total'))
                     clean_item['tonelaje_total'] = total_val
                     saldo_val = parse_decimal_kg(clean_item.get('tonelaje_saldo')) if 'tonelaje_saldo' in clean_item else Decimal('0')
-                    # Si el saldo restante es 0 o no es admin, hereda automáticamente el saldo total
-                    if not is_admin or saldo_val == Decimal('0'):
+                    is_custom = clean_item.pop('is_custom_saldo', False) or clean_item.pop('_customSaldo', False)
+                    # Si el saldo restante es 0 o no es admin, hereda automáticamente el saldo total salvo que sea personalizado
+                    if not is_admin:
+                        clean_item['tonelaje_saldo'] = total_val
+                    elif is_custom:
+                        clean_item['tonelaje_saldo'] = saldo_val
+                    elif saldo_val == Decimal('0') and total_val > Decimal('0'):
                         clean_item['tonelaje_saldo'] = total_val
                     else:
                         clean_item['tonelaje_saldo'] = saldo_val

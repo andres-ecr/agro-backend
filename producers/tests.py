@@ -199,3 +199,140 @@ class ProducerCLPTests(TestCase):
         clp2 = ProducerCLP.objects.get(code='CLP-AUTO-2')
         self.assertEqual(float(clp2.tonelaje_total), 80000.0)
         self.assertEqual(float(clp2.tonelaje_saldo), 30000.0)
+
+    def test_clp_consumed_weight_active_campaign(self):
+        """Verifica que /producers/clp-consumed-weight/ calcule el peso neto consumido solo de la campaña activa excluyendo descartes"""
+        import json
+        from decimal import Decimal
+        from inventory.models import Campaign, Product
+        from reports.models import Report
+        from tenants.models import Tenant
+
+        tenant = Tenant.objects.create(name='Sede Ica Test', code='ICA-TEST')
+        self.user.tenant = tenant
+        self.user.save()
+
+        product = Product.objects.create(name='Uva Test', code='UVA-TEST', tenant=tenant)
+        active_campaign = Campaign.objects.create(
+            name='Campaña Uva 2026',
+            status=Campaign.STATUS_ACTIVE,
+            product=product,
+            tenant=tenant
+        )
+        closed_campaign = Campaign.objects.create(
+            name='Campaña Uva 2025',
+            status=Campaign.STATUS_CLOSED,
+            product=product,
+            tenant=tenant
+        )
+
+        producer = Producer.objects.create(
+            code='72',
+            name='INOFUENTE GUERRA CARLOS GREGORIO',
+            tenant=tenant
+        )
+        clp = ProducerCLP.objects.create(
+            producer=producer,
+            code='024-39573-01',
+            lugar_produccion='Fundo Villafuerte',
+            tonelaje_total=Decimal('100000.00'),
+            tonelaje_saldo=Decimal('100000.00')
+        )
+
+        # Recepción 1 en campaña activa: 12,129.90 kg
+        Report.objects.create(
+            id='rep-001',
+            producto='Uva Test',
+            lote='UI-396',
+            totalPesoNeto=Decimal('12129.90'),
+            tenant=tenant,
+            campaign=active_campaign,
+            datosGenerales_json=json.dumps({
+                'clp': '024-39573-01',
+                'productorCode': '72',
+                'productor': 'INOFUENTE GUERRA CARLOS GREGORIO',
+                'tipoReporte': 'normal'
+            })
+        )
+
+        # Recepción 2 en campaña activa: 11,343.10 kg
+        Report.objects.create(
+            id='rep-002',
+            producto='Uva Test',
+            lote='UI-390',
+            totalPesoNeto=Decimal('11343.10'),
+            tenant=tenant,
+            campaign=active_campaign,
+            datosGenerales_json=json.dumps({
+                'clp': '024-39573-01',
+                'productorCode': '72',
+                'productor': 'INOFUENTE GUERRA CARLOS GREGORIO',
+                'tipoReporte': 'normal'
+            })
+        )
+
+        # Descarte en campaña activa: 500 kg (no debe contarse)
+        Report.objects.create(
+            id='rep-desc-001',
+            producto='Uva Test',
+            lote='DESC-UI-396',
+            totalPesoNeto=Decimal('500.00'),
+            tenant=tenant,
+            campaign=active_campaign,
+            datosGenerales_json=json.dumps({
+                'clp': '024-39573-01',
+                'productorCode': '72',
+                'productor': 'INOFUENTE GUERRA CARLOS GREGORIO',
+                'tipoReporte': 'descarte',
+                'reporteOrigenId': 'rep-001'
+            })
+        )
+
+        # Recepción en campaña CERRADA: 5,000 kg (no debe contarse)
+        Report.objects.create(
+            id='rep-old-001',
+            producto='Uva Test',
+            lote='UI-OLD-1',
+            totalPesoNeto=Decimal('5000.00'),
+            tenant=tenant,
+            campaign=closed_campaign,
+            datosGenerales_json=json.dumps({
+                'clp': '024-39573-01',
+                'productorCode': '72',
+                'productor': 'INOFUENTE GUERRA CARLOS GREGORIO',
+                'tipoReporte': 'normal'
+            })
+        )
+
+        # 1. Consulta sin CLP -> 400
+        res_bad = self.client.get('/producers/clp-consumed-weight/')
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 2. Consulta con CLP y total -> 2 recepciones, 23,473.00 kg consumidos, saldo 76,527.00 kg
+        res = self.client.get(
+            f'/producers/clp-consumed-weight/?clp=024-39573-01&producer_id={producer.id}&total_kg=100000'
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['receptions_count'], 2)
+        self.assertAlmostEqual(res.data['consumed_kg'], 23473.0, places=2)
+        self.assertAlmostEqual(res.data['suggested_saldo_kg'], 76527.0, places=2)
+        self.assertIn('Campaña Uva 2026', res.data['campaign_name'])
+
+        # 3. Guardar el productor con el saldo recalculado
+        update_payload = {
+            'code': '72',
+            'name': 'INOFUENTE GUERRA CARLOS GREGORIO',
+            'clp_list': [
+                {
+                    'id': clp.id,
+                    'code': '024-39573-01',
+                    'tonelaje_total': '100,000',
+                    'tonelaje_saldo': '76,527',
+                    'is_custom_saldo': True
+                }
+            ]
+        }
+        res_update = self.client.put(f'/producers/{producer.id}/', data=update_payload, format='json')
+        self.assertEqual(res_update.status_code, status.HTTP_200_OK)
+        clp.refresh_from_db()
+        self.assertEqual(float(clp.tonelaje_saldo), 76527.0)

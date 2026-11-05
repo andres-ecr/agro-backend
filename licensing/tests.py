@@ -1,4 +1,6 @@
 from datetime import timedelta
+import urllib.error
+from unittest.mock import patch
 from django.test import TestCase, Client
 from django.utils import timezone
 from .models import LicenseState
@@ -36,7 +38,8 @@ class LicensingTests(TestCase):
         self.assertEqual(status, 'perpetual')
         self.assertTrue(meta['is_perpetual'])
 
-    def test_offline_grace_period_within_48_hours(self):
+    @patch('urllib.request.urlopen', side_effect=urllib.error.URLError('Network unreachable'))
+    def test_offline_grace_period_within_48_hours(self, mock_urlopen):
         state = LicenseState.get_instance()
         state.serial_key = 'ALCH-TEST-KEY-1234'
         state.is_perpetual = False
@@ -50,7 +53,8 @@ class LicensingTests(TestCase):
         self.assertEqual(status, 'grace_period')
         self.assertGreater(meta.get('hours_remaining', 0), 30)
 
-    def test_offline_grace_period_expired_after_48_hours(self):
+    @patch('urllib.request.urlopen', side_effect=urllib.error.URLError('Network unreachable'))
+    def test_offline_grace_period_expired_after_48_hours(self, mock_urlopen):
         state = LicenseState.get_instance()
         state.serial_key = 'ALCH-TEST-KEY-1234'
         state.is_perpetual = False

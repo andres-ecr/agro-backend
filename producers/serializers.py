@@ -1,11 +1,44 @@
+import re
 from decimal import Decimal
 from rest_framework import serializers
 from .models import Producer, ProducerCLP
 
 
+def parse_decimal_kg(val, default=Decimal('0')):
+    """Parsea valores numéricos asegurando estándar Excel: coma miles, punto decimal"""
+    if val is None or val == '':
+        return default
+    if isinstance(val, (int, float, Decimal)):
+        return Decimal(str(val))
+    val_str = str(val).strip().replace(',', '')
+    if re.match(r'^\d{1,3}(\.\d{3})+$', val_str):
+        val_str = val_str.replace('.', '')
+    try:
+        return Decimal(val_str)
+    except Exception:
+        return default
+
+
+class FlexibleKgDecimalField(serializers.DecimalField):
+    """Campo Decimal que acepta strings con separador de miles por coma (ej. '100,000')"""
+    def to_internal_value(self, data):
+        if data is None or data == '':
+            return super().to_internal_value(data)
+        if isinstance(data, (int, float, Decimal)):
+            return super().to_internal_value(data)
+        if isinstance(data, str):
+            clean = data.replace(',', '').strip()
+            if re.match(r'^\d{1,3}(\.\d{3})+$', clean):
+                clean = clean.replace('.', '')
+            data = clean
+        return super().to_internal_value(data)
+
+
 class ProducerCLPSerializer(serializers.ModelSerializer):
     """Serializer para Códigos de Lugar de Producción (CLP) con control de tonelaje"""
     id = serializers.IntegerField(required=False)
+    tonelaje_total = FlexibleKgDecimalField(max_digits=12, decimal_places=2, required=False)
+    tonelaje_saldo = FlexibleKgDecimalField(max_digits=12, decimal_places=2, required=False)
     tonelaje_total_tn = serializers.ReadOnlyField()
     tonelaje_saldo_tn = serializers.ReadOnlyField()
 
@@ -54,10 +87,13 @@ class ProducerSerializer(serializers.ModelSerializer):
         
         for item in clp_data:
             clean_item = {k: v for k, v in item.items() if k != 'id'}
-            # Inicializar saldo si es nuevo
-            total_val = clean_item.get('tonelaje_total') or Decimal('0')
+            # Inicializar saldo si es nuevo asegurando parsing limpio de miles y decimales
+            total_val = parse_decimal_kg(clean_item.get('tonelaje_total'))
+            clean_item['tonelaje_total'] = total_val
             if 'tonelaje_saldo' not in clean_item or not is_admin:
                 clean_item['tonelaje_saldo'] = total_val
+            else:
+                clean_item['tonelaje_saldo'] = parse_decimal_kg(clean_item['tonelaje_saldo'], total_val)
             ProducerCLP.objects.create(producer=producer, **clean_item)
             
         # Si tiene campo clp legacy pero no clp_list, sincronizar creando un CLP
@@ -86,11 +122,7 @@ class ProducerSerializer(serializers.ModelSerializer):
                     old_total = clp_obj.tonelaje_total or Decimal('0')
                     old_saldo = clp_obj.tonelaje_saldo or Decimal('0')
 
-                    new_total = item.get('tonelaje_total', old_total)
-                    if new_total is None:
-                        new_total = Decimal('0')
-                    else:
-                        new_total = Decimal(str(new_total))
+                    new_total = parse_decimal_kg(item.get('tonelaje_total', old_total), old_total)
 
                     for attr, val in item.items():
                         if attr not in ('id', 'tonelaje_saldo', 'tonelaje_total'):
@@ -101,7 +133,7 @@ class ProducerSerializer(serializers.ModelSerializer):
                     if is_admin:
                         # Admins can manually override tonelaje_saldo
                         if 'tonelaje_saldo' in item and item['tonelaje_saldo'] is not None:
-                            clp_obj.tonelaje_saldo = Decimal(str(item['tonelaje_saldo']))
+                            clp_obj.tonelaje_saldo = parse_decimal_kg(item['tonelaje_saldo'], old_saldo)
                     else:
                         # Non-admins: if total changed (extension), apply delta to remaining balance
                         delta = new_total - old_total
@@ -112,10 +144,12 @@ class ProducerSerializer(serializers.ModelSerializer):
                     updated_ids.add(clp_id)
                 else:
                     clean_item = {k: v for k, v in item.items() if k != 'id'}
-                    total_val = clean_item.get('tonelaje_total') or Decimal('0')
-                    total_val = Decimal(str(total_val))
+                    total_val = parse_decimal_kg(clean_item.get('tonelaje_total'))
+                    clean_item['tonelaje_total'] = total_val
                     if 'tonelaje_saldo' not in clean_item or not is_admin:
                         clean_item['tonelaje_saldo'] = total_val
+                    else:
+                        clean_item['tonelaje_saldo'] = parse_decimal_kg(clean_item['tonelaje_saldo'], total_val)
                     new_clp = ProducerCLP.objects.create(producer=instance, **clean_item)
                     updated_ids.add(new_clp.id)
 

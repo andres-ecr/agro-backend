@@ -139,3 +139,33 @@ class ProducerCLPTests(TestCase):
         self.assertEqual(res_admin.status_code, status.HTTP_200_OK)
         clp.refresh_from_db()
         self.assertEqual(float(clp.tonelaje_saldo), 42000.50)
+
+    def test_clp_tonnage_excel_number_parsing(self):
+        """Verifica que números con formato Excel (coma para miles, punto para decimales) se guarden como 100000 y no como 100"""
+        self.client.force_authenticate(user=self.user)
+        payload = {
+            'code': 'PROD-EXCEL',
+            'name': 'Fundo Excel Format',
+            'clp_list': [
+                {
+                    'code': 'CLP-EX-1',
+                    'tonelaje_total': '100,000',
+                    'tonelaje_saldo': '100,000.00'
+                },
+                {
+                    'code': 'CLP-EX-2',
+                    'tonelaje_total': '100.000',
+                    'tonelaje_saldo': '50,000.50'
+                }
+            ]
+        }
+        res = self.client.post('/producers/', data=payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        
+        clp1 = ProducerCLP.objects.get(code='CLP-EX-1')
+        self.assertEqual(float(clp1.tonelaje_total), 100000.0)
+        self.assertEqual(float(clp1.tonelaje_saldo), 100000.0)
+        
+        clp2 = ProducerCLP.objects.get(code='CLP-EX-2')
+        self.assertEqual(float(clp2.tonelaje_total), 100000.0)
+        self.assertEqual(float(clp2.tonelaje_saldo), 50000.50)

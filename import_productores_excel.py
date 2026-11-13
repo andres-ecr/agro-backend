@@ -112,7 +112,6 @@ def import_excel(file_path=None, tenant_code='casma', dry_run=False, limit=None)
     existing_clps = set(ProducerCLP.objects.values_list('code', flat=True)) | set(
         Producer.objects.exclude(clp__isnull=True).exclude(clp='').values_list('clp', flat=True)
     )
-    existing_names = set(Producer.objects.filter(tenant=tenant).values_list('name', flat=True))
 
     print(f"  -> Verificación previa: {len(existing_codes)} códigos y {len(existing_clps)} CLPs ya existentes en BD.")
 
@@ -177,12 +176,6 @@ def import_excel(file_path=None, tenant_code='casma', dry_run=False, limit=None)
                     producers_skipped += 1
                     continue
 
-                # 3. Si el productor ya existe con el mismo nombre en la sede
-                if prod_name in existing_names:
-                    print(f"  [SKIP] Productor '{prod_name}' ya registrado en {tenant.name}. Omitiendo fila {clean_n}.")
-                    producers_skipped += 1
-                    continue
-
                 if not dry_run:
                     # 1. Crear Productor
                     producer = Producer.objects.create(
@@ -207,7 +200,6 @@ def import_excel(file_path=None, tenant_code='casma', dry_run=False, limit=None)
                     # Actualizar cachés en memoria
                     existing_codes.add(prod_code)
                     existing_clps.add(clp_code)
-                    existing_names.add(prod_name)
 
                 else:
                     # Simulación
@@ -215,7 +207,6 @@ def import_excel(file_path=None, tenant_code='casma', dry_run=False, limit=None)
                     clps_created += 1
                     existing_codes.add(prod_code)
                     existing_clps.add(clp_code)
-                    existing_names.add(prod_name)
 
                 # Progreso visual cada 250 filas
                 if idx % 250 == 0 or idx == len(all_data):
